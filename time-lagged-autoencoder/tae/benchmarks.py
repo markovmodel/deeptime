@@ -27,14 +27,24 @@ from .utils import cca as _cca
 from .models import PCA as _PCA
 from .models import TICA as _TICA
 from .models import AE as _AE
+from .toymodels import sample_sqrt_model as _sample_sqrt_model
+from .toymodels import sample_swissroll_model as _sample_swissroll_model
 from torch import from_numpy as _from_numpy
+from torch import cat as _cat
 from torch import nn as _nn
 from torch.utils.data import DataLoader as _DataLoader
+from os.path import isfile as _isfile
+from urllib.request import urlretrieve as _urlretrieve
 
 try:
-    import pyemma
+    import pyemma as _pyemma
 except ImportError:
     print('running benchmarks requires the pyemma package')
+
+try:
+    import mdshare as _mdshare
+except ImportError:
+    print('running benchmarks requires the mdshare package')
 
 __all__ = [
     'Organizer',
@@ -50,10 +60,10 @@ __all__ = [
 def discretize_1d_model(data):
     x = _np.linspace(data.min(), data.max(), 101)
     x = 0.5 * (x[:-1] + x[1:]).reshape(-1, 1)
-    return pyemma.coordinates.assign_to_centers(data.numpy(), centers=x)
+    return _pyemma.coordinates.assign_to_centers(data.numpy(), centers=x)
 
 def discretize_2d_model(data):
-    return pyemma.coordinates.cluster_regspace(
+    return _pyemma.coordinates.cluster_regspace(
         data.numpy(), dmin=0.2, max_centers=400).dtrajs
 
 ################################################################################
@@ -75,13 +85,43 @@ class ToyModelWrapper(object):
 
 class MDDataWrapper(object):
     def __init__(
-        self, pdb_file, files, features, length, n_trajs, discretizer):
-        featurizer = pyemma.coordinates.featurizer(pdb_file)
-        if 'hap' in features:
-            featurizer.add_selection(featurizer.select_Heavy())
+        self, feature_data, ref_data, length, n_trajs, discretizer):
+        self.feature_data = feature_data
+        self.n_frames = [len(data) for data in self.feature_data]
+        self.ref_data = ref_data
+        self.length = length
+        self.n_trajs = n_trajs
         self.discretizer = discretizer
+        _np.testing.assert_array_equal(
+            [len(data) for data in self.feature_data],
+            self.n_frames)
+    @property
+    def dim(self):
+        if isinstance(self.feature_data, (list, tuple)):
+            return self.feature_data[0].shape[1]
+        return self.feature_data.shape[1]
+    def bootstrap_selector(self):
+        selection = []
+        for i in _np.random.choice(
+            len(self.n_frames), size=self.n_trajs, replace=True):
+            selection.append(
+                [i, _np.random.randint(self.n_frames[i] - self.length)])
+        return selection
+    def bootstrap(self, selection=None):
+        if selection is None:
+            selection = self.bootstrap_selector()
+        feature_data = [
+            self.feature_data[i][n:n+self.length, :] for i, n in selection]
+        ref_data = [
+            _from_numpy(
+                self.ref_data[i][n:n+self.length, :]) for i, n in selection]
+        return feature_data, ref_data
     def __call__(self, **kwargs):
-        raise NotImplementedError()
+        selection = kwargs.setdefault('selection', None)
+        feature_data, ref_data = self.bootstrap(selection=selection)
+        ref_data = _cat(ref_data)
+        dsc_data = self.discretizer(ref_data)
+        return feature_data, ref_data, dsc_data
 
 ################################################################################
 #
@@ -143,7 +183,7 @@ class BenchmarkRunner(object):
         self.tica_args = tica_args
         self.ae_args = ae_args
     def its(self, dsc_data, nits):
-        return pyemma.msm.its(
+        return _pyemma.msm.its(
             dsc_data, lags=self.msm_lags, nits=nits).timescales
     def analysis(self, model, transform_loader, ref_data):
         lat_data = _whiten_data(model.transform(transform_loader))
@@ -152,7 +192,7 @@ class BenchmarkRunner(object):
         its_data = self.its(dsc_data, 5)
         return cca_data, its_data
     def reference(self, dsc_data):
-        its_data = self.its(dsc_data, None)
+        its_data = self.its(dsc_data, 5)
         return Result(
             method='ref',
             dim=self.dim,
@@ -372,7 +412,7 @@ def run_sqrt_model_benchmark(
     _tica_args.update(tica_args)
     _ae_args.update(ae_args)
     runner = BenchmarkRunner(
-        ToyModelWrapper(sample_sqrt_model, length, discretize_1d_model),
+        ToyModelWrapper(_sample_sqrt_model, length, discretize_1d_model),
         trns_lags, msm_lags, 1, batch_size,
         wrapper_args=wrapper_args, tica_args=_tica_args, ae_args=_ae_args)
     results = organize_results([runner() for _ in range(n_runs)])
@@ -411,8 +451,52 @@ def run_swissroll_model_benchmark(
     _tica_args.update(tica_args)
     _ae_args.update(ae_args)
     runner = BenchmarkRunner(
-        ToyModelWrapper(sample_swissroll_model, length, discretizer),
+        ToyModelWrapper(_sample_swissroll_model, length, discretizer),
         trns_lags, msm_lags, dim, batch_size,
+        wrapper_args=wrapper_args, tica_args=_tica_args, ae_args=_ae_args)
+    results = organize_results([runner() for _ in range(n_runs)])
+    results.update(
+        msm_lags=_np.asarray(msm_lags),
+        trns_lags=_np.asarray(trns_lags))
+    return results
+
+def _obtain_data(filename):
+    filename = _mdshare.load(filename)
+    with _np.load(filename) as fh:
+        return [fh[key] for key in sorted(fh.keys())]
+
+def run_alanine_dipeptide_benchmark(
+    n_runs=100,
+    length=100000,
+    n_trajs=5,
+    trns_lags=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    msm_lags=[1, 2, 3, 5, 7, 10, 20, 30, 50, 70, 100],
+    batch_size=100,
+    wrapper_args=dict(), tica_args=dict(), ae_args=dict()):
+    def discretize_2d_ala2(data, n_trajs=n_trajs):
+        data = data.numpy()
+        data = data.reshape(n_trajs, -1, data.shape[1])
+        return _pyemma.coordinates.cluster_regspace(
+            [d for d in data], dmin=0.25, max_centers=500).dtrajs
+    _tica_args = dict(kinetic_map=True, symmetrize=False)
+    _ae_args = dict(
+        hid_size=[100],
+        dropout=_nn.Dropout(p=0.5),
+        activation=_nn.LeakyReLU(),
+        lat_activation=None,
+        batch_normalization=None,
+        bias=True,
+        lr=0.001,
+        cuda=False,
+        n_epochs=50)
+    _tica_args.update(tica_args)
+    _ae_args.update(ae_args)
+    runner = BenchmarkRunner(
+        MDDataWrapper(
+            _obtain_data('alanine-dipeptide-3x250ns-heavy-atom-positions.npz'),
+            _obtain_data('alanine-dipeptide-3x250ns-backbone-dihedrals.npz'),
+            length, n_trajs, discretize_2d_ala2),
+        trns_lags, msm_lags, 2, batch_size,
         wrapper_args=wrapper_args, tica_args=_tica_args, ae_args=_ae_args)
     results = organize_results([runner() for _ in range(n_runs)])
     results.update(
