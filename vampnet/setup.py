@@ -29,7 +29,7 @@ setup(
     name='vampnet',
     author='Andreas Mardt, Luca Pasquali',
     author_email='andreas.mardt@fu-berlin.de, luca.pasquali@fu-berlin.de',
-    url='https://github.com/markovmodel/deeptime/vampnet',
+    url='https://github.com/markovmodel/deeptime/tree/master/vampnet',
     description=description,
     packages=find_packages(),
     setup_requires=['setuptools_scm', 'setuptools_scm_git_archive'],

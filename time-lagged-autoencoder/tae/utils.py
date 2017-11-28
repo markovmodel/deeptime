@@ -314,7 +314,7 @@ class BaseTransform(object):
         return x
 
 class Transform(object):
-    '''Apply whitening/centering transformations within a minbatch.
+    '''Apply whitening/centering transformations within a minibatch.
 
     As we do not want to preprocess and, thus, duplicate large datasets,
     we do the necessary whitening and centering operations on the fly while

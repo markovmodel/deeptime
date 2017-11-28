@@ -39,19 +39,14 @@ class PyTest(TestCommand):
         errno = pytest.main(self.pytest_args)
         sys.exit(errno)
 
-description = '''
-A toolbox for dimensionality reduction of time series data with a
-time-lagged autoencoder.
-'''
-
 setup(
     cmdclass={'test': PyTest},
     use_scm_version=dict(root='..', relative_to=__file__),
     name='tae',
     author='Christoph Wehmeyer',
     author_email='christoph.wehmeyer@fu-berlin.de',
-    url='https://github.com/markovmodel/deeptime/time-lagged-autoencoder',
-    description=description,
+    url='https://github.com/markovmodel/deeptime/tree/master/time-lagged-autoencoder',
+    description='A toolbox for dimension reduction of time series data with a time-lagged autoencoder.',
     packages=find_packages(),
     setup_requires=['setuptools_scm', 'setuptools_scm_git_archive'],
     install_requires=['numpy'],

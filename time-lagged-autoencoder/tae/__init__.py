@@ -16,7 +16,7 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 '''
-A toolbox for dimensionality reduction of time series data with a
+A toolbox for dimension reduction of time series data with a
 time-lagged autoencoder.
 '''
 
@@ -25,11 +25,11 @@ try:
     __version__ = get_distribution(__name__).version
 except DistributionNotFound:
     __version__ = 'x.y.z'
-#del get_distribution, DistributionNotFound
+del get_distribution, DistributionNotFound
 
 __author__ = 'Christoph Wehmeyer'
 __email__ = 'christoph.wehmeyer@fu-berlin.de'
 
-from .models import *
+from .models import PCA, TICA, AE
 from . import utils
 from . import toymodels
