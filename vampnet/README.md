@@ -18,11 +18,34 @@ If you use VAMPnet in scientific work, please cite:
 
 
 ## Installation
-First clone the repository, then with pip:
+This package requires [Tensorflow 1.4](https://www.tensorflow.org) to be used.
+Please install either tensorflow or tensorflow-gpu. Installation instructions:
+
+https://www.tensorflow.org/install/
+
+To install this package, first clone the repository:
+
+git clone https://github.com/markovmodel/deeptime.git
+
+Then with pip:
 
 ```bash
-pip install .
+python setup.py install
 ```
 
-## Notes
-This package requires [Tensorflow 1.4](https://www.tensorflow.org) to be used.
+The examples are jupyter notebooks, so the jupyter package is needed to run them:
+
+http://jupyter.readthedocs.io/en/latest/install.html
+
+as well as keras:
+
+https://keras.io/#installation
+
+This is not needed if you'd like to use the package only.
+
+
+If you want to run the alanine dipeptide example, you'll also need to install the mdshare package (necessary for the download of the trajectory files):
+
+git clone https://github.com/markovmodel/mdshare.git
+pip install ./mdshare
+

@@ -15,7 +15,6 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from keras import backend as K 
 import tensorflow as tf
 import numpy as np
 import scipy
@@ -522,7 +521,7 @@ class VampnetTools(object):
                                           est[index_i, index_j], color='r', linestyle='--')
                 
                 ax[index_i][index_j].set_title(str(index_i+1)+ '->' +str(index_j+1),
-                                               fontsize = 'small')
+                                               fontsize='small')
         
         ax[0][0].set_ylim((-0.1,1.1));
         ax[0][0].set_xlim((0, steps*tau));

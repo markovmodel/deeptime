@@ -15,7 +15,7 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 description = '''
 Collection of functions to implement neural networks based
@@ -24,17 +24,16 @@ as described in https://arxiv.org/abs/1710.06012
 '''
 
 setup(
-    use_scm_version=dict(root='..', relative_to=__file__),
+#    use_scm_version=dict(root='..', relative_to=__file__),
+    use_scm_version=True,
     name='vampnet',
     author='Andreas Mardt, Luca Pasquali',
     author_email='andreas.mardt@fu-berlin.de, luca.pasquali@fu-berlin.de',
     url='https://github.com/markovmodel/deeptime/vampnet',
     description=description,
-    packages=['vampnet'],
+    packages=find_packages(),
     setup_requires=['setuptools_scm', 'setuptools_scm_git_archive'],
     install_requires=[
-        'keras',
-        'tensorflow',
         'numpy',
         'scipy',
         'matplotlib'],
