@@ -102,6 +102,13 @@ def ensure_traj_format(data, dtype=_np.float32):
         raise ValueError('data has incomplatible ndim: ' + str(data.ndim))
 
 def create_dataset(data, lag=0, dtype=_np.float32):
+    '''Create a (time-lagged) dataset from one or more numpy.ndarrays.
+
+    Arguments:
+        data (numpy.ndarray of list thereof): data to create the dataset from
+        lag (int): specifies the lag in time steps
+        dtype (numpy.dtype): dtype of the resulting dataset
+    '''
     if isinstance(data, _np.ndarray):
         return LaggedDataset(
             _torch.from_numpy(ensure_traj_format(data, dtype=dtype)),

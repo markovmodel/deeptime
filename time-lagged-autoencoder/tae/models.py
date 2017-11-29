@@ -276,7 +276,7 @@ class _BaseAE(_nn.Module):
 class AE(_BaseAE):
     '''Use a time-lagged autoencoder model for dimensionality reduction.
 
-    We train a time-lagged autoencoder type neural network
+    We train a time-lagged autoencoder type neural network.
 
     Arguments:
         inp_size (int): dimensionality of the full space
