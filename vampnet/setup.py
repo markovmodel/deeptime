@@ -24,8 +24,7 @@ as described in https://arxiv.org/abs/1710.06012
 '''
 
 setup(
-#    use_scm_version=dict(root='..', relative_to=__file__),
-    use_scm_version=True,
+    use_scm_version=dict(root='..', relative_to=__file__),
     name='vampnet',
     author='Andreas Mardt, Luca Pasquali',
     author_email='andreas.mardt@fu-berlin.de, luca.pasquali@fu-berlin.de',
