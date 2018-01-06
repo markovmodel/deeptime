@@ -1,9 +1,9 @@
 #   This file is part of the markovmodel/deeptime repository.
-#   Copyright (C) 2017 Computational Molecular Biology Group,
+#   Copyright (C) 2017, 2018 Computational Molecular Biology Group,
 #   Freie Universitaet Berlin (GER)
 #
 #   This program is free software: you can redistribute it and/or modify
-#   it under the terms of the GNU General Public License as published by
+#   it under the terms of the GNU Lesser General Public License as published by
 #   the Free Software Foundation, either version 3 of the License, or
 #   (at your option) any later version.
 #
@@ -12,7 +12,7 @@
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
 #
-#   You should have received a copy of the GNU General Public License
+#   You should have received a copy of the GNU Lesser General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 '''
@@ -34,6 +34,7 @@ __all__ = [
     'create_dataset',
     'stride_split',
     'random_split',
+    'random_block_split',
     'get_mean',
     'get_covariance',
     'get_sqrt_inverse',
@@ -143,7 +144,7 @@ def stride_split(dataset, stride=2, offset=0):
     return MaskedDataset(dataset, active), MaskedDataset(dataset, complement)
 
 def random_split(dataset, active=None, n_active=None, f_active=None):
-    '''Split one dataset into two parts based on a random selction.
+    '''Split one dataset into two parts based on a random selection.
 
     This helps to separate a dataset into two or more subsets, e.g., for
     training and testing. Specify the active set either by giving the frame
@@ -153,7 +154,7 @@ def random_split(dataset, active=None, n_active=None, f_active=None):
         dataset (Dataset): contains the data you want to split
         active (iterable of int): specify the active frames
         n_active (int): number of active frames
-        f_active (int): fraction of active frames
+        f_active (float): fraction of active frames
     '''
     if active is None:
         if n_active is None:
@@ -172,9 +173,10 @@ def random_split(dataset, active=None, n_active=None, f_active=None):
                     'do not specify f_active if n_active is given')
         active = _np.random.choice(len(dataset), size=n_active, replace=False)
     else:
+        active = _np.asarray(active)
         assert len(active) == len(_np.unique(active)), \
             'you must use every active index only once'
-        assert _np.all(0 <= active < len(dataset)), \
+        assert _np.all(0 <= active) and _np.all(active < len(dataset)), \
             'you must use only valid indices'
         if f_active is not None:
             raise ValueError(
@@ -185,6 +187,29 @@ def random_split(dataset, active=None, n_active=None, f_active=None):
     complement = _np.setdiff1d(
         _np.arange(len(dataset)), active, assume_unique=True)
     return MaskedDataset(dataset, active), MaskedDataset(dataset, complement)
+
+def random_block_split(dataset, lag, f_active=0.5):
+    '''Split one dataset into two parts based on a random selection of blocks.
+
+    This helps to separate a dataset into two or more subsets, e.g., for
+    training and testing. Specify the active set either by giving the fraction
+    of active blocks (the total number of transitions is conserved).
+
+    Arguments:
+        dataset (Dataset): contains the data you want to split
+        lag (int): specifies the lag in time steps
+        f_active (float): fraction of active blocks
+    '''
+    active = []
+    n = 0
+    nmax = len(dataset)
+    n_blocks = int(_np.ceil(float(nmax) / float(lag)))
+    n_active_blocks = int(_np.floor(0.5 + f_active * n_blocks))
+    active_blocks = _np.random.choice(
+        n_blocks, size=n_active_blocks, replace=False)
+    for n in active_blocks:
+        active += _np.arange(n * lag, min((n + 1) * lag, nmax)).tolist()
+    return random_split(dataset, active=active)
 
 ################################################################################
 #

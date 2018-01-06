@@ -1,9 +1,9 @@
 #   This file is part of the markovmodel/deeptime repository.
-#   Copyright (C) 2017 Computational Molecular Biology Group,
+#   Copyright (C) 2017, 2018 Computational Molecular Biology Group,
 #   Freie Universitaet Berlin (GER)
 #
 #   This program is free software: you can redistribute it and/or modify
-#   it under the terms of the GNU General Public License as published by
+#   it under the terms of the GNU Lesser General Public License as published by
 #   the Free Software Foundation, either version 3 of the License, or
 #   (at your option) any later version.
 #
@@ -12,7 +12,7 @@
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
 #
-#   You should have received a copy of the GNU General Public License
+#   You should have received a copy of the GNU Lesser General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 '''
@@ -176,23 +176,95 @@ class TICA(object):
 #
 ################################################################################
 
-class _BaseAE(_nn.Module):
+class AE(_nn.Module):
+    '''Use a time-lagged autoencoder model for dimensionality reduction.
+
+    We train a time-lagged autoencoder type neural network.
+
+    Arguments:
+        inp_size (int): dimensionality of the full space
+        lat_size (int): dimensionality of the desired latent space
+        hid_size (sequence of int): sizes of the hidden layers
+        dropout (Dropout): dropout layer for each hidden layer
+        alpha (float) activation parameter for the rectified linear units
+        prelu (bool) use a learnable ReLU
+        bias (boolean): specify usage of bias neurons
+        lr (float): learning rate parameter for Adam
+        cuda (boolean): use the GPU
+    '''
     def __init__(
-        self, dropout, activation, lat_activation, batch_normalization):
-        super(_BaseAE, self).__init__()
-        self.dropout = dropout
-        self.activation = activation
-        if lat_activation is not None:
-            self.lat_activation = lat_activation
-        if batch_normalization is not None:
-            self.batch_normalization = batch_normalization
-        self.use_cuda = False
+        self, inp_size, lat_size, hid_size=[],
+        dropout=_nn.Dropout(p=0.5), alpha=0.01, prelu=False,
+        bias=True, lr=0.001, cuda=False, async=False):
+        super(AE, self).__init__()
+        sizes = [inp_size] + list(hid_size) + [lat_size]
+        self._last = len(sizes) - 2
+        for c, idx in enumerate(range(1, len(sizes))):
+            setattr(
+                self,
+                'enc_prm_%d' % c,
+                _nn.Linear(sizes[idx - 1], sizes[idx], bias=bias))
+            self._create_activation('enc', c, alpha, prelu)
+            if c < self._last:
+                if dropout is not None:
+                    setattr(self, 'enc_drp_%d' % c, dropout)
+        for c, idx in enumerate(reversed(range(1, len(sizes)))):
+            setattr(
+                self,
+                'dec_prm_%d' % c,
+                _nn.Linear(sizes[idx], sizes[idx - 1], bias=bias))
+            if c < self._last:
+                self._create_activation('dec', c, alpha, prelu)
+                if dropout is not None:
+                    setattr(self, 'dec_drp_%d' % c, dropout)
+        self.loss_function = _nn.MSELoss(size_average=False)
+        self.optimizer = _optim.Adam(self.parameters(), lr=lr)
+        self.async = async
+        if cuda:
+            self.use_cuda = True
+            self.cuda() # the async=... parameter is not accepted, here
+        else:
+            self.use_cuda = False
+    def _create_activation(self, key, idx, alpha, prelu):
+        if alpha is None:
+            return
+        elif alpha < 0.0:
+            raise ValueError('alpha must be a non-negative number')
+        elif alpha == 0.0:
+            activation = _nn.ReLU()
+        elif prelu:
+            activation = _nn.PReLU(num_parameters=1, init=alpha)
+        else:
+            activation = _nn.LeakyReLU(negative_slope=alpha)
+        setattr(self, key + '_act_%d' % idx, activation)
+        layer = getattr(self, key + '_prm_%d' % idx)
+        _nn.init.kaiming_normal(layer.weight.data, a=alpha, mode='fan_in')
+        try:
+            layer.bias.data.uniform_(0.0, 0.1)
+        except AttributeError:
+            pass
+    def _try_to_apply_module(self, key, value):
+        try:
+            return getattr(self, key)(value)
+        except AttributeError:
+            return value
+    def _apply_layer(self, key, idx, value):
+        return self._try_to_apply_module(
+            key + '_drp_%d' % idx, self._try_to_apply_module(
+                key + '_act_%d' % idx, self._try_to_apply_module(
+                    key + '_prm_%d' % idx, value)))
     def encode(self, x):
-        raise NotImplementedError('overwrite in subclass')
+        y = x
+        for idx in range(self._last):
+            y = self._apply_layer('enc', idx, y)
+        return getattr(self, 'enc_prm_%d' % self._last)(y)
     def decode(self, z):
-        raise NotImplementedError('overwrite in subclass')
+        y = self._try_to_apply_module('enc_act_%d' % self._last, z)
+        for idx in range(self._last):
+            y = self._apply_layer('dec', idx, y)
+        return getattr(self, 'dec_prm_%d' % self._last)(y)
     def forward(self, x):
-        raise NotImplementedError('overwrite in subclass')
+        return self.decode(self.encode(x))
     def train_step(
         self, loader):
         self.train()
@@ -200,13 +272,9 @@ class _BaseAE(_nn.Module):
         for batch_idx, (x, y) in enumerate(loader):
             x, y = self.transformer(x, y, variable=True, train=True)
             if self.use_cuda:
-                x = x.cuda()
-                y = y.cuda()
+                x = x.cuda(async=self.async)
+                y = y.cuda(async=self.async)
             self.optimizer.zero_grad()
-            try:
-                x = self.batch_normalization(x)
-            except AttributeError:
-                pass
             y_recon = self(x)
             loss = self.loss_function(y_recon, y)
             loss.backward()
@@ -221,12 +289,8 @@ class _BaseAE(_nn.Module):
         for i, (x, y) in enumerate(loader):
             x, y = self.transformer(x, y, variable=True)
             if self.use_cuda:
-                x = x.cuda()
-                y = y.cuda()
-            try:
-                x = self.batch_normalization(x)
-            except AttributeError:
-                pass
+                x = x.cuda(async=self.async)
+                y = y.cuda(async=self.async)
             y_recon = self(x)
             test_loss += self.loss_function(y_recon, y).data[0]
         return test_loss / float(len(loader.dataset))
@@ -262,70 +326,9 @@ class _BaseAE(_nn.Module):
             x = self.transformer.x(
                 x, variable=True, volatile=True, requires_grad=False)
             if self.use_cuda:
-                x = x.cuda()
-            try:
-                x = self.batch_normalization(x)
-            except AttributeError:
-                pass
+                x = x.cuda(async=self.async)
             y = self.encode(x)
             if self.cuda:
                 y = y.cpu()
             latent.append(y)
         return _cat(latent).data
-
-class AE(_BaseAE):
-    '''Use a time-lagged autoencoder model for dimensionality reduction.
-
-    We train a time-lagged autoencoder type neural network.
-
-    Arguments:
-        inp_size (int): dimensionality of the full space
-        lat_size (int): dimensionality of the desired latent space
-        hid_size (sequence of int): sizes of the hidden layers
-        dropout (Dropout): dropout layer for each hidden layer
-        activation (Activation) activation layer for each hidden layer
-        lat_activation (Activation) activation layer for the latent layer
-        batch_normalization (BatchNormalization) use batch normalization
-        bias (boolean): specify usage of bias neurons
-        lr (float): learning rate parameter for Adam
-        cuda (boolean): use the GPU
-    '''
-    def __init__(
-        self, inp_size, lat_size, hid_size=[],
-        dropout=_nn.Dropout(p=0.5), activation=_nn.LeakyReLU(),
-        lat_activation=None, batch_normalization=None,
-        bias=True, lr=0.001, cuda=False):
-        super(AE, self).__init__(
-            dropout, activation, lat_activation, batch_normalization)
-        sizes = [inp_size] + list(hid_size) + [lat_size]
-        self.enc_layers = [
-            _nn.Linear(
-                sizes[i-1], sizes[i], bias=bias) for i in range(1, len(sizes))]
-        self.dec_layers = [
-            _nn.Linear(
-                sizes[i], sizes[i-1], bias=bias) for i in reversed(
-                    range(1, len(sizes)))]
-        for i, layer in enumerate(self.enc_layers):
-            self.add_module('enc_%d' % i, layer)
-        for i, layer in enumerate(self.dec_layers):
-            self.add_module('dec_%d' % i, layer)
-        self.loss_function = _nn.MSELoss(size_average=False)
-        self.optimizer = _optim.Adam(self.parameters(), lr=lr)
-        if cuda:
-            self.use_cuda = True
-            self.cuda()
-    def encode(self, x):
-        y = x
-        for layer in self.enc_layers[:-1]:
-            y = self.dropout(self.activation(layer(y)))
-        return self.enc_layers[-1](y)
-    def decode(self, z):
-        try:
-            y = self.lat_activation(z)
-        except AttributeError:
-            y = z
-        for layer in self.dec_layers[:-1]:
-            y = self.dropout(self.activation(layer(y)))
-        return self.dec_layers[-1](y)
-    def forward(self, x):
-        return self.decode(self.encode(x))

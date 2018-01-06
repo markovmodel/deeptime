@@ -1,9 +1,9 @@
 #   This file is part of the markovmodel/deeptime repository.
-#   Copyright (C) 2017 Computational Molecular Biology Group,
+#   Copyright (C) 2017, 2018 Computational Molecular Biology Group,
 #   Freie Universitaet Berlin (GER)
 #
 #   This program is free software: you can redistribute it and/or modify
-#   it under the terms of the GNU General Public License as published by
+#   it under the terms of the GNU Lesser General Public License as published by
 #   the Free Software Foundation, either version 3 of the License, or
 #   (at your option) any later version.
 #
@@ -12,7 +12,7 @@
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
 #
-#   You should have received a copy of the GNU General Public License
+#   You should have received a copy of the GNU Lesser General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
@@ -84,7 +84,7 @@ def test_tica_2state_hmm():
 
 def test_ae_2state_hmm():
     traj, train_loader, transform_loader = generate_data_2state_hmm(lag=1)
-    ae = AE(2, 1, bias=False)
+    ae = AE(2, 1, bias=False, alpha=None)
     ae.fit(train_loader, 20)
     out = whiten_data(ae.transform(transform_loader)).numpy().reshape((-1,))
     traj -= np.mean(traj)

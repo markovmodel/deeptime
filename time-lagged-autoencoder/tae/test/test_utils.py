@@ -1,9 +1,9 @@
 #   This file is part of the markovmodel/deeptime repository.
-#   Copyright (C) 2017 Computational Molecular Biology Group,
+#   Copyright (C) 2017, 2018 Computational Molecular Biology Group,
 #   Freie Universitaet Berlin (GER)
 #
 #   This program is free software: you can redistribute it and/or modify
-#   it under the terms of the GNU General Public License as published by
+#   it under the terms of the GNU Lesser General Public License as published by
 #   the Free Software Foundation, either version 3 of the License, or
 #   (at your option) any later version.
 #
@@ -12,7 +12,7 @@
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
 #
-#   You should have received a copy of the GNU General Public License
+#   You should have received a copy of the GNU Lesser General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
@@ -24,6 +24,7 @@ from ..utils import ensure_traj_format
 from ..utils import create_dataset
 from ..utils import stride_split
 from ..utils import random_split
+from ..utils import random_block_split
 from ..utils import get_mean
 from ..utils import get_covariance
 from ..utils import get_sqrt_inverse
@@ -138,6 +139,18 @@ def test_random_split():
     lag = 1 + np.random.randint(50)
     dataset = LaggedDataset(torch.Tensor(data), lag)
     dataset_a, dataset_b = random_split(dataset, f_active=0.5)
+    assert len(dataset) == len(dataset_a) + len(dataset_b)
+    for x, y in dataset_a:
+        assert x[0] + lag == y[0]
+    for x, y in dataset_b:
+        assert x[0] + lag == y[0]
+
+def test_random_block_split():
+    data = np.arange(
+        800 + np.random.randint(200)).reshape(-1, 1).astype(np.float32)
+    lag = 1 + np.random.randint(50)
+    dataset = LaggedDataset(torch.Tensor(data), lag)
+    dataset_a, dataset_b = random_block_split(dataset, lag, f_active=0.5)
     assert len(dataset) == len(dataset_a) + len(dataset_b)
     for x, y in dataset_a:
         assert x[0] + lag == y[0]
