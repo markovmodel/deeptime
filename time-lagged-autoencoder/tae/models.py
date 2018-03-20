@@ -452,6 +452,8 @@ class VAE(BaseAE):
         if self.training:
             std = lv.mul(0.5).exp_()
             eps = _Variable(_randn(*std.size()))
+            if self.use_cuda:
+                eps = eps.cuda()
             return eps.mul(std).add_(mu)
         else:
             return mu
