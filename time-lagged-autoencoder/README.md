@@ -35,6 +35,9 @@ tica_transformed_data, tica_train_loss, tica_val_loss = tae.tica(data, dim=dim, 
 # run AE
 ae_transformed_data, ae_train_loss, ae_val_loss = tae.ae(data, dim=dim, lag=lag)
 
+# run VAE
+vae_transformed_data, vae_train_loss, vae_val_loss = tae.vae(data, dim=dim, lag=lag)
+
 # run AE on a GPU
 ae_transformed_data, ae_train_loss, ae_val_loss = tae.ae(data, dim=dim, lag=lag, cuda=True)
 ```
@@ -48,15 +51,17 @@ ae_transformed_data, ae_train_loss, ae_val_loss = tae.ae(
 
 ## Citation
 ```
-@article{time-lagged-autoencoder-arxiv,
-    Archiveprefix = {arXiv},
-    Author = {{Wehmeyer}, C. and {No{\'e}}, F.},
-    Eprint = {1710.11239},
-    Journal = {ArXiv e-prints},
-    Month = oct,
-    Primaryclass = {stat.ML},
-    Title = {{Time-lagged autoencoders: Deep learning of slow collective variables for molecular kinetics}},
-    Year = 2017}
+@article{time-lagged-autoencoder,
+	Author = {Christoph Wehmeyer and Frank No{\'{e}}},
+	Doi = {10.1063/1.5011399},
+	Journal = {J. Chem. Phys.},
+	Month = {jun},
+	Number = {24},
+	Pages = {241703},
+	Publisher = {{AIP} Publishing},
+	Title = {Time-lagged autoencoders: Deep learning of slow collective variables for molecular kinetics},
+	Volume = {148},
+	Year = {2018}}
 ```
 
 ## Development system
