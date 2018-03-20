@@ -363,11 +363,6 @@ class Transform(object):
         self.x = BaseTransform(mean=x_mean, covariance=x_covariance)
         self.y = BaseTransform(mean=y_mean, covariance=y_covariance)
     def __call__(self, x, y, variable=False, train=False):
-        return self.x(
-                x, variable=variable,
-                volatile=not train, requires_grad=train), \
-            self.y(
-                y, variable=variable,
-                volatile=not train, requires_grad=False)
-
-
+        xtrns = self.x(x, variable=variable, volatile=not train)
+        ytrns = self.y(y, variable=variable, volatile=not train)
+        return xtrns, ytrns
