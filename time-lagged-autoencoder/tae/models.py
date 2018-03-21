@@ -16,7 +16,7 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 '''
-Implementations of PCA, TICA, and AE.
+Implementations of PCA, TICA, AE, and VAE.
 '''
 
 from torch import svd as _svd
@@ -178,11 +178,11 @@ class TICA(object):
 #
 ################################################################################
 
-class BaseAE(_nn.Module):
-    '''Basic shape of a time-lagged autoencoder family model for
-    dimensionality reduction.
+class BaseNet(_nn.Module):
+    '''Basic shape of a pytorch neural network model for dimension reduction.
 
-    We train a time-lagged variational autoencoder type neural network.
+    The BaseNet is the basis of more specialised dimension reduction networks
+    and provides the full infrastructure for the setup and training process.
 
     Arguments:
         inp_size (int): dimensionality of the full space
@@ -198,13 +198,12 @@ class BaseAE(_nn.Module):
     def __init__(
         self, inp_size, lat_size, hid_size,
         dropout, alpha, prelu, bias, lr, cuda, async):
-        super(BaseAE, self).__init__()
+        super(BaseNet, self).__init__()
         sizes = [inp_size] + list(hid_size) + [lat_size]
         self._last = len(sizes) - 2
         if isinstance(dropout, float):
             dropout = _nn.Dropout(p=dropout)
         self._setup(sizes, bias, alpha, prelu, dropout)
-        self._mse_loss_function = _nn.MSELoss(size_average=False)
         self.optimizer = _optim.Adam(self.parameters(), lr=lr)
         self.async = async
         if cuda:
@@ -212,7 +211,12 @@ class BaseAE(_nn.Module):
             self.cuda() # the async=... parameter is not accepted, here
         else:
             self.use_cuda = False
+    def _setup(self, sizes, bias, alpha, prelu, dropout):
+        '''Implement this in your derived class to create the necessary
+        layers.
+        '''
     def _create_activation(self, key, idx, alpha, prelu, suffix=''):
+        '''Helper function to create activations and initialize parameters.'''
         if alpha is None:
             activation = None
         elif alpha < 0.0:
@@ -232,18 +236,24 @@ class BaseAE(_nn.Module):
         except AttributeError:
             pass
     def _try_to_apply_module(self, key, value):
+        '''Helper function to safely apply a module within the network.'''
         try:
             return getattr(self, key)(value)
         except AttributeError:
             return value
     def _apply_layer(self, key, idx, value):
+        '''Helper function to safely apply a layer (module sequence) within
+        the network.
+        '''
         return self._try_to_apply_module(
             key + '_drp_%d' % idx, self._try_to_apply_module(
                 key + '_act_%d' % idx, self._try_to_apply_module(
                     key + '_prm_%d' % idx, value)))
-    def loss_function(self, y, model_output):
+    def forward_and_apply_loss_function(self, x, y):
+        '''Implement this in your derived class'''
         raise NotImplementedError('Implement in child class')
     def train_step(self, loader):
+        '''A single training epoch.'''
         self.train()
         train_loss = 0
         for x, y in loader:
@@ -252,12 +262,13 @@ class BaseAE(_nn.Module):
                 x = x.cuda(async=self.async)
                 y = y.cuda(async=self.async)
             self.optimizer.zero_grad()
-            loss = self.loss_function(y, self(x))
+            loss = self.forward_and_apply_loss_function(x, y)
             loss.backward()
             train_loss += loss.data[0]
             self.optimizer.step()
         return train_loss / float(len(loader.dataset))
     def test_step(self, loader):
+        '''A single validation epoch'''
         self.eval()
         test_loss = 0
         if loader is None:
@@ -267,7 +278,7 @@ class BaseAE(_nn.Module):
             if self.use_cuda:
                 x = x.cuda(async=self.async)
                 y = y.cuda(async=self.async)
-            test_loss += self.loss_function(y, self(x)).data[0]
+            test_loss += self.forward_and_apply_loss_function(x, y).data[0]
         return test_loss / float(len(loader.dataset))
     def fit(self, train_loader, n_epochs, test_loader=None):
         '''Train the model on the provided data loader.
@@ -298,8 +309,7 @@ class BaseAE(_nn.Module):
         self.eval()
         latent = []
         for x, _ in loader:
-            x = self.transformer.x(
-                x, variable=True, volatile=True, requires_grad=False)
+            x = self.transformer.x(x, variable=True, volatile=True)
             if self.use_cuda:
                 x = x.cuda(async=self.async)
             y = self.encode(x)
@@ -314,7 +324,7 @@ class BaseAE(_nn.Module):
 #
 ################################################################################
 
-class AE(BaseAE):
+class AE(BaseNet):
     '''Use a time-lagged autoencoder model for dimensionality reduction.
 
     We train a time-lagged autoencoder type neural network.
@@ -337,7 +347,9 @@ class AE(BaseAE):
         super(AE, self).__init__(
             inp_size, lat_size, hid_size,
             dropout, alpha, prelu, bias, lr, cuda, async)
+        self._mse_loss_function = _nn.MSELoss(size_average=False)
     def _setup(self, sizes, bias, alpha, prelu, dropout):
+        '''Helper function to create al necessary layers.'''
         for c, idx in enumerate(range(1, len(sizes))):
             setattr(
                 self,
@@ -358,19 +370,25 @@ class AE(BaseAE):
                     setattr(self, 'dec_drp_%d' % c, dropout)
             else:
                 self._create_activation('dec', c, None, None)
-    def loss_function(self, y, model_output):
-        return self._mse_loss_function(model_output, y)
+    def forward_and_apply_loss_function(self, x, y):
+        '''Helper function to feed data through the network and compute the
+        desired loss.
+        '''
+        return self._mse_loss_function(self(x), y)
     def encode(self, x):
+        '''Encode the given input.'''
         y = x
         for idx in range(self._last):
             y = self._apply_layer('enc', idx, y)
         return getattr(self, 'enc_prm_%d' % self._last)(y)
     def decode(self, z):
+        '''Decode the given input.'''
         y = self._try_to_apply_module('enc_act_%d' % self._last, z)
         for idx in range(self._last):
             y = self._apply_layer('dec', idx, y)
         return getattr(self, 'dec_prm_%d' % self._last)(y)
     def forward(self, x):
+        '''Forward the given input through the network.'''
         return self.decode(self.encode(x))
 
 ################################################################################
@@ -379,7 +397,7 @@ class AE(BaseAE):
 #
 ################################################################################
 
-class VAE(BaseAE):
+class VAE(BaseNet):
     '''Use a time-lagged variational autoencoder model for dimensionality
     reduction.
 
@@ -405,7 +423,9 @@ class VAE(BaseAE):
             inp_size, lat_size, hid_size,
             dropout, alpha, prelu, bias, lr, cuda, async)
         self.beta = beta
+        self._mse_loss_function = _nn.MSELoss(size_average=False)
     def _setup(self, sizes, bias, alpha, prelu, dropout):
+        '''Helper function to create al necessary layers.'''
         for c, idx in enumerate(range(1, len(sizes) - 1)):
             setattr(
                 self,
@@ -435,12 +455,16 @@ class VAE(BaseAE):
                     setattr(self, 'dec_drp_%d' % c, dropout)
             else:
                 self._create_activation('dec', c, None, None)
-    def loss_function(self, y, model_output):
-        y_recon, mu, lv = model_output
+    def forward_and_apply_loss_function(self, x, y):
+        '''Helper function to feed data through the network and compute the
+        desired loss.
+        '''
+        y_recon, mu, lv = self(x)
         mse = self._mse_loss_function(y_recon, y)
         kld = -0.5 * _sum(1.0 + lv - mu.pow(2) - lv.exp())
         return mse + self.beta * kld / float(y.size(1))
     def _encode(self, x):
+        '''Encode the given input.'''
         y = x
         for idx in range(self._last):
             y = self._apply_layer('enc', idx, y)
@@ -448,6 +472,7 @@ class VAE(BaseAE):
         lv = getattr(self, 'enc_prm_%d_lv' % self._last)(y)
         return mu, lv
     def _reparameterize(self, mu, lv):
+        '''Reparametrize the given input.'''
         if self.training:
             std = lv.mul(0.5).exp_()
             eps = _Variable(_randn(*std.size()))
@@ -457,12 +482,15 @@ class VAE(BaseAE):
         else:
             return mu
     def encode(self, x):
+        '''Encode/reparametrize the given input.'''
         return self._reparameterize(*self._encode(x))
     def decode(self, z):
+        '''Decode the given input.'''
         y = z
         for idx in range(self._last):
             y = self._apply_layer('dec', idx, y)
         return getattr(self, 'dec_prm_%d' % self._last)(y)
     def forward(self, x):
+        '''Forward the given input through the network.'''
         mu, lv = self._encode(x)
         return self.decode(self._reparameterize(mu, lv)), mu, lv
