@@ -31,7 +31,8 @@ def generate_data_2state_hmm(length=10000):
         [np.sin(phi), np.cos(phi)]])
     trajs, rtrajs = [], []
     for _ in range(np.random.randint(1, 5)):
-        dtraj = np.zeros(shape=(length + np.random.randint(100),), dtype=np.intc)
+        dtraj = np.zeros(
+            shape=(length + np.random.randint(100),), dtype=np.intc)
         for i in range(1, len(dtraj)):
             dtraj[i] = np.random.choice(
                 2, size=1, p=transition_matrix[dtraj[i - 1], :])

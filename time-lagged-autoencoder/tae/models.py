@@ -243,11 +243,10 @@ class BaseAE(_nn.Module):
                     key + '_prm_%d' % idx, value)))
     def loss_function(self, y, model_output):
         raise NotImplementedError('Implement in child class')
-    def train_step(
-        self, loader):
+    def train_step(self, loader):
         self.train()
         train_loss = 0
-        for batch_idx, (x, y) in enumerate(loader):
+        for x, y in loader:
             x, y = self.transformer(x, y, variable=True, train=True)
             if self.use_cuda:
                 x = x.cuda(async=self.async)
@@ -263,7 +262,7 @@ class BaseAE(_nn.Module):
         test_loss = 0
         if loader is None:
             return None
-        for i, (x, y) in enumerate(loader):
+        for x, y in loader:
             x, y = self.transformer(x, y, variable=True)
             if self.use_cuda:
                 x = x.cuda(async=self.async)
@@ -298,7 +297,7 @@ class BaseAE(_nn.Module):
         '''
         self.eval()
         latent = []
-        for i, (x, _) in enumerate(loader):
+        for x, _ in loader:
             x = self.transformer.x(
                 x, variable=True, volatile=True, requires_grad=False)
             if self.use_cuda:
