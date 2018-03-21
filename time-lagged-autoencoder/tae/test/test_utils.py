@@ -163,7 +163,7 @@ def test_random_block_split():
 #
 ################################################################################
 
-def test_get_mean():
+def test_get_mean_via_normal_distribution_parameters():
     data = torch.randn(10000, 1)
     dataset = LaggedDataset(data, lag=0)
     x, y = get_mean(
@@ -172,7 +172,27 @@ def test_get_mean():
     np.testing.assert_allclose(x.numpy(), 0.0, atol=0.05)
     np.testing.assert_allclose(y.numpy(), 0.0, atol=0.05)
 
-def test_get_covariance():
+def test_get_mean_via_distribution_symmetry():
+    data = torch.rand(5000, 1)
+    data = torch.cat([data, -data])
+    dataset = LaggedDataset(data, lag=0)
+    x, y = get_mean(
+        DataLoader(
+            dataset, batch_size=np.random.randint(low=10, high=100)))
+    np.testing.assert_allclose(x.numpy(), 0.0, atol=0.0001)
+    np.testing.assert_allclose(y.numpy(), 0.0, atol=0.0001)
+
+def test_get_mean_vs_numpy():
+    data = torch.randn(10000, 1)
+    dataset = LaggedDataset(data, lag=0)
+    x, y = get_mean(
+        DataLoader(
+            dataset, batch_size=np.random.randint(low=10, high=100)))
+    numpy_result = np.mean(data.numpy())
+    np.testing.assert_allclose(x.numpy(), numpy_result, atol=0.0001)
+    np.testing.assert_allclose(y.numpy(), numpy_result, atol=0.0001)
+
+def test_get_covariance_via_normal_distribution_parameters():
     data = torch.randn(10000, 1)
     dataset = LaggedDataset(data, lag=0)
     xx, xy, yy = get_covariance(
@@ -182,6 +202,18 @@ def test_get_covariance():
     np.testing.assert_allclose(xx.numpy(), 1.0, atol=0.1)
     np.testing.assert_allclose(xy.numpy(), 1.0, atol=0.1)
     np.testing.assert_allclose(yy.numpy(), 1.0, atol=0.1)
+
+def test_get_covariance_vs_numpy():
+    data = torch.randn(10000, 1)
+    dataset = LaggedDataset(data, lag=0)
+    xx, xy, yy = get_covariance(
+        DataLoader(
+            dataset, batch_size=np.random.randint(low=10, high=100)),
+        torch.Tensor([0]), torch.Tensor([0]))
+    numpy_result = np.var(data.numpy(), ddof=1)
+    np.testing.assert_allclose(xx.numpy(), numpy_result, atol=0.0005)
+    np.testing.assert_allclose(xy.numpy(), numpy_result, atol=0.0005)
+    np.testing.assert_allclose(yy.numpy(), numpy_result, atol=0.0005)
 
 ################################################################################
 #
