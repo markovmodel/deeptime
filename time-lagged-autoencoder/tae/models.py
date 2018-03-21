@@ -26,7 +26,14 @@ from torch import diag as _diag
 from torch import cat as _cat
 from torch import randn as _randn
 from torch import sum as _sum
+from torch import mm as _mm
+from torch import symeig as _symeig
+from torch import abs as _abs
+from torch import arange as _arange
+from torch import sqrt as _sqrt
+from torch import zeros as _zeros
 from torch.autograd import Variable as _Variable
+from torch.autograd import Function as _Function
 from .utils import get_mean as _get_mean
 from .utils import get_covariance as _get_covariance
 from .utils import Transform as _Transform
@@ -188,15 +195,17 @@ class BaseNet(_nn.Module):
         inp_size (int): dimensionality of the full space
         lat_size (int): dimensionality of the desired latent space
         hid_size (sequence of int): sizes of the hidden layers
+        normalize_batch (boolean): normalize over batches instead samples
         dropout (Dropout): dropout layer for each hidden layer
         alpha (float) activation parameter for the rectified linear units
         prelu (bool) use a learnable ReLU
         bias (boolean): specify usage of bias neurons
         lr (float): learning rate parameter for Adam
         cuda (boolean): use the GPU
+        async (boolean): use asyncronous mode (GPU only)
     '''
     def __init__(
-        self, inp_size, lat_size, hid_size,
+        self, inp_size, lat_size, hid_size, normalize_batch,
         dropout, alpha, prelu, bias, lr, cuda, async):
         super(BaseNet, self).__init__()
         sizes = [inp_size] + list(hid_size) + [lat_size]
@@ -205,6 +214,7 @@ class BaseNet(_nn.Module):
             dropout = _nn.Dropout(p=dropout)
         self._setup(sizes, bias, alpha, prelu, dropout)
         self.optimizer = _optim.Adam(self.parameters(), lr=lr)
+        self.normalize_batch = normalize_batch
         self.async = async
         if cuda:
             self.use_cuda = True
@@ -266,6 +276,8 @@ class BaseNet(_nn.Module):
             loss.backward()
             train_loss += loss.data[0]
             self.optimizer.step()
+        if self.normalize_batch:
+            return train_loss / float(len(loader))
         return train_loss / float(len(loader.dataset))
     def test_step(self, loader):
         '''A single validation epoch'''
@@ -279,6 +291,8 @@ class BaseNet(_nn.Module):
                 x = x.cuda(async=self.async)
                 y = y.cuda(async=self.async)
             test_loss += self.forward_and_apply_loss_function(x, y).data[0]
+        if self.normalize_batch:
+            return test_loss / float(len(loader))
         return test_loss / float(len(loader.dataset))
     def fit(self, train_loader, n_epochs, test_loader=None):
         '''Train the model on the provided data loader.
@@ -345,7 +359,7 @@ class AE(BaseNet):
         dropout=0.5, alpha=0.01, prelu=False,
         bias=True, lr=0.001, cuda=False, async=False):
         super(AE, self).__init__(
-            inp_size, lat_size, hid_size,
+            inp_size, lat_size, hid_size, False,
             dropout, alpha, prelu, bias, lr, cuda, async)
         self._mse_loss_function = _nn.MSELoss(size_average=False)
     def _setup(self, sizes, bias, alpha, prelu, dropout):
@@ -420,7 +434,7 @@ class VAE(BaseNet):
         dropout=0.5, alpha=0.01, prelu=False,
         bias=True, lr=0.001, cuda=False, async=False):
         super(VAE, self).__init__(
-            inp_size, lat_size, hid_size,
+            inp_size, lat_size, hid_size, False,
             dropout, alpha, prelu, bias, lr, cuda, async)
         self.beta = beta
         self._mse_loss_function = _nn.MSELoss(size_average=False)
@@ -494,3 +508,89 @@ class VAE(BaseNet):
         '''Forward the given input through the network.'''
         mu, lv = self._encode(x)
         return self.decode(self._reparameterize(mu, lv)), mu, lv
+
+################################################################################
+#
+#   VAMPNET WORK IN PROGRESS
+#
+################################################################################
+
+class DecomposeRSPDMatrix(_Function):
+    @staticmethod
+    def forward(ctx, matrix):
+        eigval, eigvec = _symeig(matrix, eigenvectors=True)
+        eigval = _abs(eigval) + 1e-10
+        ctx.eigval = eigval
+        ctx.eigvec = eigvec
+        return eigval, eigvec
+    @staticmethod
+    def backward(ctx, dval, dvec):
+        eigval = ctx.eigval
+        eigvec = ctx.eigvec
+        n = len(eigval)
+        eigval_dist = eigval[:, None] - eigval[None, :]
+        idx = _arange(n).long()
+        eigval_dist[idx, idx] = 1.0
+        dval_out = _Variable(
+            eigvec[:, None, :] * eigvec[None, :, :])
+        dvec_out = _zeros(n, n, n, n)#.double()
+        omega = _zeros(n, n)#.double()
+        for i in range(n):
+            for j in range(n):
+                omega[:, :] = eigvec[i, :, None] * eigvec[j, None, :]
+                omega[idx] = 0.0
+                omega.div_(eigval_dist)
+                dvec_out[i, j, :, :] = -_mm(eigvec, omega)
+        dvec_out = _Variable(dvec_out)
+        dval = _sum(dval[None, None, :] * dval_out, -1)
+        dvec = _sum(_sum(dvec[None, None, :, :] * dvec_out, -1), -1)
+        return dval + dvec
+
+def covar(x, y):
+    return _mm(x.t(), y).div_(len(x))
+
+def sqrtinv(matrix):
+    eigval, eigvec = DecomposeRSPDMatrix.apply(matrix)
+    diag = _diag(1.0 / _sqrt(eigval))
+    return _mm(eigvec, _mm(diag, eigvec.t()))
+
+def get_koopman_matrix(x, y):
+    ixx = sqrtinv(covar(x, x))
+    iyy = sqrtinv(covar(y, y))
+    cxy = covar(x, y)
+    kmm = _mm(ixx, _mm(cxy, iyy))
+    return kmm.t()
+
+class VAMPNet(BaseNet):
+    def __init__(
+        self, inp_size, lat_size, hid_size=[],
+        dropout=0.5, alpha=0.01, prelu=False,
+        bias=True, lr=0.001, cuda=False, async=False):
+        super(VAMPNet, self).__init__(
+            inp_size, lat_size, hid_size, True,
+            dropout, alpha, prelu, bias, lr, cuda, async)
+    def _setup(self, sizes, bias, alpha, prelu, dropout):
+        for c, idx in enumerate(range(1, len(sizes))):
+            setattr(
+                self,
+                'enc_prm_%d' % c,
+                _nn.Linear(sizes[idx - 1], sizes[idx], bias=bias))
+            if c < self._last:
+                self._create_activation('enc', c, alpha, prelu)
+                if dropout is not None:
+                    setattr(self, 'enc_drp_%d' % c, dropout)
+        self._create_activation('enc', self._last, None, None)
+        self.max = _nn.Softmax(dim=1)
+    def forward_and_apply_loss_function(self, x, y):
+        koopman = self(x, y)
+        return -_sum(koopman**2)
+    def encode(self, x):
+        y = x
+        for idx in range(self._last):
+            y = self._apply_layer('enc', idx, y)
+        y = getattr(self, 'enc_prm_%d' % self._last)(y)
+        return self.max(y)
+    def forward(self, x, y):
+        x_enc = self.encode(x)
+        y_enc = self.encode(y)
+        return get_koopman_matrix(x_enc, y_enc)
