@@ -529,16 +529,16 @@ class DecomposeRSPDMatrix(_Function):
         eigvec = ctx.eigvec
         n = len(eigval)
         eigval_dist = eigval[:, None] - eigval[None, :]
-        idx = _arange(n).long()
+        idx = _arange(n).long().tolist()
         eigval_dist[idx, idx] = 1.0
         dval_out = _Variable(
             eigvec[:, None, :] * eigvec[None, :, :])
-        dvec_out = _zeros(n, n, n, n)#.double()
-        omega = _zeros(n, n)#.double()
+        dvec_out = _zeros(n, n, n, n).type(eigval.type())
+        omega = _zeros(n, n).type(eigval.type())
         for i in range(n):
             for j in range(n):
                 omega[:, :] = eigvec[i, :, None] * eigvec[j, None, :]
-                omega[idx] = 0.0
+                omega[idx, idx] = 0.0
                 omega.div_(eigval_dist)
                 dvec_out[i, j, :, :] = -_mm(eigvec, omega)
         dvec_out = _Variable(dvec_out)
