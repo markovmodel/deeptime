@@ -125,6 +125,46 @@ class VampnetTools(object):
         loss_score = - concat_derivatives * y_pred
 
         return loss_score
+    
+    
+    def loss_VAMP2_autograd(self, y_true, y_pred):
+        '''Calculates the VAMP-2 score with respect to the network lobes. Same function
+        as loss_VAMP2, but the gradient is computed automatically by tensorflow. Added
+        after tensorflow 1.5 introduced gradients for eigenvalue decomposition and SVD
+        
+        Parameters
+        ----------
+        y_true: tensorflow tensor.
+            parameter not needed for the calculation, added to comply with Keras
+            rules for loss fuctions format.
+            
+        y_pred: tensorflow tensor with shape [batch_size, 2 * output_size]
+            output of the two lobes of the network
+            
+        Returns
+        -------
+        loss_score: tensorflow tensor with shape [batch_size, 2 * output_size].
+            gradient of the VAMP-2 score
+        '''
+
+        # Remove the mean from the data
+        x, y, batch_size, output_size = self._prep_data(y_pred) 
+
+        # Calculate the covariance matrices
+        cov_01 = 1/(batch_size - 1) * tf.matmul(x, y, transpose_b=True)
+        cov_00 = 1/(batch_size - 1) * tf.matmul(x, x, transpose_b=True) 
+        cov_11 = 1/(batch_size - 1) * tf.matmul(y, y, transpose_b=True)
+
+        # Calculate the inverse of the self-covariance matrices
+        cov_00_inv = self._inv(cov_00, ret_sqrt = True)
+        cov_11_inv = self._inv(cov_11, ret_sqrt = True)
+
+        vamp_matrix = tf.matmul(tf.matmul(cov_00_inv, cov_01), cov_11_inv)
+
+
+        vamp_score = tf.norm(vamp_matrix)
+
+        return - tf.square(vamp_score)
 
 
     def loss_VAMP2(self, y_true, y_pred):
@@ -608,8 +648,8 @@ class VampnetTools(object):
         y_biased = tf.transpose(data[:,o:])
 
         # Subtract the mean
-        x = x_biased - tf.reduce_mean(x_biased, axis=1, keep_dims=True)
-        y = y_biased - tf.reduce_mean(y_biased, axis=1, keep_dims=True)
+        x = x_biased - tf.reduce_mean(x_biased, axis=1, keepdims=True)
+        y = y_biased - tf.reduce_mean(y_biased, axis=1, keepdims=True)
 
         return x, y, b, o
         
@@ -699,9 +739,6 @@ class VampnetTools(object):
         auto_cov_inv_root = self._inv(auto_cov, ret_sqrt=True)
  
         return auto_cov_inv_root, cross_cov
-
-
-
 
 
 
