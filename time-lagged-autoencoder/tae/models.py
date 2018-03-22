@@ -24,12 +24,14 @@ from torch import nn as _nn
 from torch import optim as _optim
 from torch import diag as _diag
 from torch import cat as _cat
+from torch import randn as _randn
+from torch import sum as _sum
 from torch.autograd import Variable as _Variable
 from .utils import get_mean as _get_mean
 from .utils import get_covariance as _get_covariance
 from .utils import Transform as _Transform
 
-__all__ = ['PCA', 'TICA', 'AE']
+__all__ = ['PCA', 'TICA', 'AE', 'VAE']
 
 ################################################################################
 #
@@ -149,8 +151,8 @@ class TICA(object):
         u, s, v = _svd(self.ixx.mm(self.cxy.mm(self.iyy)))
         if dim is None:
             dim = s.size()[0]
-        self.decoder_matrix = u[:, :dim]
-        self.encoder_matrix = v.t()[:dim, :]
+        self.decoder_matrix = v[:, :dim]
+        self.encoder_matrix = u.t()[:dim, :]
         if self.kinetic_map:
             self.encoder_matrix = _diag(s[:dim]).mm(self.encoder_matrix)
         else:
@@ -172,14 +174,15 @@ class TICA(object):
 
 ################################################################################
 #
-#   AUTOENCODER
+#   AUTOENCODER BASE CLASS
 #
 ################################################################################
 
-class AE(_nn.Module):
-    '''Use a time-lagged autoencoder model for dimensionality reduction.
+class BaseAE(_nn.Module):
+    '''Basic shape of a time-lagged autoencoder family model for
+    dimensionality reduction.
 
-    We train a time-lagged autoencoder type neural network.
+    We train a time-lagged variational autoencoder type neural network.
 
     Arguments:
         inp_size (int): dimensionality of the full space
@@ -193,31 +196,15 @@ class AE(_nn.Module):
         cuda (boolean): use the GPU
     '''
     def __init__(
-        self, inp_size, lat_size, hid_size=[],
-        dropout=_nn.Dropout(p=0.5), alpha=0.01, prelu=False,
-        bias=True, lr=0.001, cuda=False, async=False):
-        super(AE, self).__init__()
+        self, inp_size, lat_size, hid_size,
+        dropout, alpha, prelu, bias, lr, cuda, async):
+        super(BaseAE, self).__init__()
         sizes = [inp_size] + list(hid_size) + [lat_size]
         self._last = len(sizes) - 2
-        for c, idx in enumerate(range(1, len(sizes))):
-            setattr(
-                self,
-                'enc_prm_%d' % c,
-                _nn.Linear(sizes[idx - 1], sizes[idx], bias=bias))
-            self._create_activation('enc', c, alpha, prelu)
-            if c < self._last:
-                if dropout is not None:
-                    setattr(self, 'enc_drp_%d' % c, dropout)
-        for c, idx in enumerate(reversed(range(1, len(sizes)))):
-            setattr(
-                self,
-                'dec_prm_%d' % c,
-                _nn.Linear(sizes[idx], sizes[idx - 1], bias=bias))
-            if c < self._last:
-                self._create_activation('dec', c, alpha, prelu)
-                if dropout is not None:
-                    setattr(self, 'dec_drp_%d' % c, dropout)
-        self.loss_function = _nn.MSELoss(size_average=False)
+        if isinstance(dropout, float):
+            dropout = _nn.Dropout(p=dropout)
+        self._setup(sizes, bias, alpha, prelu, dropout)
+        self._mse_loss_function = _nn.MSELoss(size_average=False)
         self.optimizer = _optim.Adam(self.parameters(), lr=lr)
         self.async = async
         if cuda:
@@ -225,9 +212,9 @@ class AE(_nn.Module):
             self.cuda() # the async=... parameter is not accepted, here
         else:
             self.use_cuda = False
-    def _create_activation(self, key, idx, alpha, prelu):
+    def _create_activation(self, key, idx, alpha, prelu, suffix=''):
         if alpha is None:
-            return
+            activation = None
         elif alpha < 0.0:
             raise ValueError('alpha must be a non-negative number')
         elif alpha == 0.0:
@@ -236,8 +223,9 @@ class AE(_nn.Module):
             activation = _nn.PReLU(num_parameters=1, init=alpha)
         else:
             activation = _nn.LeakyReLU(negative_slope=alpha)
-        setattr(self, key + '_act_%d' % idx, activation)
-        layer = getattr(self, key + '_prm_%d' % idx)
+        if activation is not None:
+            setattr(self, key + '_act_%d%s' % (idx, suffix), activation)
+        layer = getattr(self, key + '_prm_%d%s' % (idx, suffix))
         _nn.init.kaiming_normal(layer.weight.data, a=alpha, mode='fan_in')
         try:
             layer.bias.data.uniform_(0.0, 0.1)
@@ -253,18 +241,8 @@ class AE(_nn.Module):
             key + '_drp_%d' % idx, self._try_to_apply_module(
                 key + '_act_%d' % idx, self._try_to_apply_module(
                     key + '_prm_%d' % idx, value)))
-    def encode(self, x):
-        y = x
-        for idx in range(self._last):
-            y = self._apply_layer('enc', idx, y)
-        return getattr(self, 'enc_prm_%d' % self._last)(y)
-    def decode(self, z):
-        y = self._try_to_apply_module('enc_act_%d' % self._last, z)
-        for idx in range(self._last):
-            y = self._apply_layer('dec', idx, y)
-        return getattr(self, 'dec_prm_%d' % self._last)(y)
-    def forward(self, x):
-        return self.decode(self.encode(x))
+    def loss_function(self, y, model_output):
+        raise NotImplementedError('Implement in child class')
     def train_step(
         self, loader):
         self.train()
@@ -275,8 +253,7 @@ class AE(_nn.Module):
                 x = x.cuda(async=self.async)
                 y = y.cuda(async=self.async)
             self.optimizer.zero_grad()
-            y_recon = self(x)
-            loss = self.loss_function(y_recon, y)
+            loss = self.loss_function(y, self(x))
             loss.backward()
             train_loss += loss.data[0]
             self.optimizer.step()
@@ -291,8 +268,7 @@ class AE(_nn.Module):
             if self.use_cuda:
                 x = x.cuda(async=self.async)
                 y = y.cuda(async=self.async)
-            y_recon = self(x)
-            test_loss += self.loss_function(y_recon, y).data[0]
+            test_loss += self.loss_function(y, self(x)).data[0]
         return test_loss / float(len(loader.dataset))
     def fit(self, train_loader, n_epochs, test_loader=None):
         '''Train the model on the provided data loader.
@@ -332,3 +308,162 @@ class AE(_nn.Module):
                 y = y.cpu()
             latent.append(y)
         return _cat(latent).data
+
+################################################################################
+#
+#   AUTOENCODER
+#
+################################################################################
+
+class AE(BaseAE):
+    '''Use a time-lagged autoencoder model for dimensionality reduction.
+
+    We train a time-lagged autoencoder type neural network.
+
+    Arguments:
+        inp_size (int): dimensionality of the full space
+        lat_size (int): dimensionality of the desired latent space
+        hid_size (sequence of int): sizes of the hidden layers
+        dropout (Dropout): dropout layer for each hidden layer
+        alpha (float) activation parameter for the rectified linear units
+        prelu (bool) use a learnable ReLU
+        bias (boolean): specify usage of bias neurons
+        lr (float): learning rate parameter for Adam
+        cuda (boolean): use the GPU
+    '''
+    def __init__(
+        self, inp_size, lat_size, hid_size=[],
+        dropout=0.5, alpha=0.01, prelu=False,
+        bias=True, lr=0.001, cuda=False, async=False):
+        super(AE, self).__init__(
+            inp_size, lat_size, hid_size,
+            dropout, alpha, prelu, bias, lr, cuda, async)
+    def _setup(self, sizes, bias, alpha, prelu, dropout):
+        for c, idx in enumerate(range(1, len(sizes))):
+            setattr(
+                self,
+                'enc_prm_%d' % c,
+                _nn.Linear(sizes[idx - 1], sizes[idx], bias=bias))
+            self._create_activation('enc', c, alpha, prelu)
+            if c < self._last:
+                if dropout is not None:
+                    setattr(self, 'enc_drp_%d' % c, dropout)
+        for c, idx in enumerate(reversed(range(1, len(sizes)))):
+            setattr(
+                self,
+                'dec_prm_%d' % c,
+                _nn.Linear(sizes[idx], sizes[idx - 1], bias=bias))
+            if c < self._last:
+                self._create_activation('dec', c, alpha, prelu)
+                if dropout is not None:
+                    setattr(self, 'dec_drp_%d' % c, dropout)
+            else:
+                self._create_activation('dec', c, None, None)
+    def loss_function(self, y, model_output):
+        return self._mse_loss_function(model_output, y)
+    def encode(self, x):
+        y = x
+        for idx in range(self._last):
+            y = self._apply_layer('enc', idx, y)
+        return getattr(self, 'enc_prm_%d' % self._last)(y)
+    def decode(self, z):
+        y = self._try_to_apply_module('enc_act_%d' % self._last, z)
+        for idx in range(self._last):
+            y = self._apply_layer('dec', idx, y)
+        return getattr(self, 'dec_prm_%d' % self._last)(y)
+    def forward(self, x):
+        return self.decode(self.encode(x))
+
+################################################################################
+#
+#   VARIATIONAL AUTOENCODER
+#
+################################################################################
+
+class VAE(BaseAE):
+    '''Use a time-lagged variational autoencoder model for dimensionality
+    reduction.
+
+    We train a time-lagged variational autoencoder type neural network.
+
+    Arguments:
+        inp_size (int): dimensionality of the full space
+        lat_size (int): dimensionality of the desired latent space
+        hid_size (sequence of int): sizes of the hidden layers
+        beta (float) : KLD weight for optimization
+        dropout (Dropout): dropout layer for each hidden layer
+        alpha (float) activation parameter for the rectified linear units
+        prelu (bool) use a learnable ReLU
+        bias (boolean): specify usage of bias neurons
+        lr (float): learning rate parameter for Adam
+        cuda (boolean): use the GPU
+    '''
+    def __init__(
+        self, inp_size, lat_size, hid_size=[], beta=1.0,
+        dropout=0.5, alpha=0.01, prelu=False,
+        bias=True, lr=0.001, cuda=False, async=False):
+        super(VAE, self).__init__(
+            inp_size, lat_size, hid_size,
+            dropout, alpha, prelu, bias, lr, cuda, async)
+        self.beta = beta
+    def _setup(self, sizes, bias, alpha, prelu, dropout):
+        for c, idx in enumerate(range(1, len(sizes) - 1)):
+            setattr(
+                self,
+                'enc_prm_%d' % c,
+                _nn.Linear(sizes[idx - 1], sizes[idx], bias=bias))
+            self._create_activation('enc', c, alpha, prelu)
+            if dropout is not None:
+                setattr(self, 'enc_drp_%d' % c, dropout)
+        setattr(
+            self,
+            'enc_prm_%d_mu' % self._last,
+            _nn.Linear(sizes[-2], sizes[-1], bias=bias))
+        self._create_activation('enc', self._last, None, None, suffix='_mu')
+        setattr(
+            self,
+            'enc_prm_%d_lv' % self._last,
+            _nn.Linear(sizes[-2], sizes[-1], bias=bias))
+        self._create_activation('enc', self._last, None, None, suffix='_lv')
+        for c, idx in enumerate(reversed(range(1, len(sizes)))):
+            setattr(
+                self,
+                'dec_prm_%d' % c,
+                _nn.Linear(sizes[idx], sizes[idx - 1], bias=bias))
+            if c < self._last:
+                self._create_activation('dec', c, alpha, prelu)
+                if dropout is not None:
+                    setattr(self, 'dec_drp_%d' % c, dropout)
+            else:
+                self._create_activation('dec', c, None, None)
+    def loss_function(self, y, model_output):
+        y_recon, mu, lv = model_output
+        mse = self._mse_loss_function(y_recon, y)
+        kld = -0.5 * _sum(1.0 + lv - mu.pow(2) - lv.exp())
+        return mse + self.beta * kld / float(y.size(1))
+    def _encode(self, x):
+        y = x
+        for idx in range(self._last):
+            y = self._apply_layer('enc', idx, y)
+        mu = getattr(self, 'enc_prm_%d_mu' % self._last)(y)
+        lv = getattr(self, 'enc_prm_%d_lv' % self._last)(y)
+        return mu, lv
+    def _reparameterize(self, mu, lv):
+        if self.training:
+            std = lv.mul(0.5).exp_()
+            eps = _Variable(_randn(*std.size()))
+            if self.use_cuda:
+                eps = eps.cuda()
+            return eps.mul(std).add_(mu)
+        else:
+            return mu
+    def encode(self, x):
+        return self._reparameterize(*self._encode(x))
+    def decode(self, z):
+        y = z
+        for idx in range(self._last):
+            y = self._apply_layer('dec', idx, y)
+        return getattr(self, 'dec_prm_%d' % self._last)(y)
+    def forward(self, x):
+        mu, lv = self._encode(x)
+        return self.decode(self._reparameterize(mu, lv)), mu, lv

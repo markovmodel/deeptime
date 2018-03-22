@@ -22,6 +22,7 @@ A simple API to apply PCA, TICA, and AE to time series data.
 from .models import PCA as _PCA
 from .models import TICA as _TICA
 from .models import AE as _AE
+from .models import VAE as _VAE
 from .utils import create_dataset as _create_dataset
 from .utils import random_split as _random_split
 from .utils import random_block_split as _random_block_split
@@ -144,7 +145,7 @@ def ae(
     '''
     ae_args = dict(
         hid_size=[100],
-        dropout=_nn.Dropout(p=0.5),
+        dropout=0.5,
         alpha=0.01,
         prelu=False,
         bias=True,
@@ -170,6 +171,65 @@ def ae(
         test_loader = _DataLoader(
             data_test, batch_size=batch_size, pin_memory=pin_memory)
     model = _AE(size, dim, **ae_args)
+    train_loss, test_loss = model.fit(
+        train_loader, n_epochs, test_loader=test_loader)
+    transformed_data = _transform(model, data, data_0, batch_size, whiten)
+    return transformed_data, train_loss, test_loss
+
+def vae(
+    data, dim=None, lag=1, n_epochs=50, validation_split=None,
+    batch_size=100, whiten=False, pin_memory=False, **kwargs):
+    '''Use a time-lagged variational autoencoder model for dimensionality
+    reduction.
+
+    We train a deep (or shallow) time-lagged variational autoencoder type
+    neural network and use the first half (encoder stage) to transform the
+    supplied data.
+
+    Arguments:
+        data (numpy-ndarray of list thereof): the data to be transformed
+        dim (int): the target dimensionality
+        lag (int): specifies the lag in time steps
+        n_epochs (int): number of training epochs
+        validation_split (float): fraction of the data reserved for validation
+        batch_size (int): specify a batch size for the minibatch process
+        whiten (boolean): set to True to whiten the transformed data
+        pin_memory (boolean): make DataLoaders return pinned memory
+
+    Returns:
+        (numpy.ndarray of list thereof): the transformed data
+        (list of float): training loss
+        (list of float): validation loss
+    '''
+    vae_args = dict(
+        hid_size=[100],
+        beta=1.0,
+        dropout=0.5,
+        alpha=0.01,
+        prelu=False,
+        bias=True,
+        lr=0.001,
+        cuda=False,
+        async=False)
+    vae_args.update(kwargs)
+    try:
+        size = data.shape[1]
+    except AttributeError:
+        size = data[0].shape[1]
+    data_0 = _create_dataset(data, lag=0)
+    data_lag = _create_dataset(data, lag=lag)
+    if validation_split is None:
+        train_loader = _DataLoader(
+            data_lag, batch_size=batch_size, pin_memory=pin_memory)
+        test_loader = None
+    else:
+        data_test, data_train = _random_block_split(
+            data_lag, lag, f_active=validation_split)
+        train_loader = _DataLoader(
+            data_train, batch_size=batch_size, pin_memory=pin_memory)
+        test_loader = _DataLoader(
+            data_test, batch_size=batch_size, pin_memory=pin_memory)
+    model = _VAE(size, dim, **vae_args)
     train_loss, test_loss = model.fit(
         train_loader, n_epochs, test_loader=test_loader)
     transformed_data = _transform(model, data, data_0, batch_size, whiten)
