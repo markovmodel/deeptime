@@ -193,4 +193,51 @@ def get_alanine_data(input_type = 'coordinates', return_dihedrals = True, number
         retval.append(dihedral)
     
     
-    return retval      
+    return retval
+
+
+def build_generator_on_source(data_source, batch_size, lag, output_size):
+    '''Function used to create a generator that will fetch data from a data source through an iterator.
+    This can be passed as parameter to a keras fit_generator method.
+
+    Parameters
+    ----------
+    data_source: pyemma source object.
+        Data files source. This has to be initialized with chunksize = batch_size
+
+    batch_size: int
+        Batch size to be used for the training
+
+    lag: int
+        time frames lag to be used in the training of the VAMPnets
+
+    output_size: int
+        How many output nodes the network has
+    '''
+
+    counter_batches = 0
+
+
+    # How many batches before the iterator has to be reinitialized
+    steps_epoch = np.sum(np.ceil((data_source.trajectory_lengths()-lag)/batch_size))
+
+    data_iterator = data_source.iterator(chunk = batch_size,
+                                         lag = lag,
+                                         return_trajindex=False)
+
+    while True:       
+
+        input_data = list(data_iterator.next())        
+
+        # Create empty labels to accomodate keras' interface requirements
+        labels = np.empty((input_data[0].shape[0],2*output_size)).astype('float32')
+        data = input_data, labels
+        counter_batches += 1
+
+        if counter_batches == steps_epoch:
+            data_iterator = data_source.iterator(chunk = batch_size,
+                                                 lag = lag,
+                                                 return_trajindex=False)
+            counter_batches = 0
+
+        yield data
