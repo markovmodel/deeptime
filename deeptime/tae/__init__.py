@@ -20,13 +20,6 @@ A toolbox for dimension reduction of time series data with a
 time-lagged autoencoder.
 '''
 
-from pkg_resources import get_distribution, DistributionNotFound
-try:
-    __version__ = get_distribution(__name__).version
-except DistributionNotFound:
-    __version__ = 'x.y.z'
-del get_distribution, DistributionNotFound
-
 __author__ = 'Christoph Wehmeyer'
 __email__ = 'christoph.wehmeyer@fu-berlin.de'
 

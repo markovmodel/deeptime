@@ -15,13 +15,6 @@
 #   You should have received a copy of the GNU Lesser General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from pkg_resources import get_distribution, DistributionNotFound
-try:
-    __version__ = get_distribution(__name__).version
-except DistributionNotFound:
-    __version__ = 'x.y.z'
-del get_distribution, DistributionNotFound
-
 __author__ = 'Andreas Mardt, Luca Pasquali'
 __email__ = 'andreas.mardt@fu-berlin.de, luca.pasquali@fu-berlin.de'
 
