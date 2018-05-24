@@ -38,7 +38,7 @@ from .utils import get_mean as _get_mean
 from .utils import get_covariance as _get_covariance
 from .utils import Transform as _Transform
 
-__all__ = ['PCA', 'TICA', 'AE', 'VAE']
+__all__ = ['PCA', 'TICA', 'AE', 'VAE', 'VAMPNet']
 
 ################################################################################
 #
