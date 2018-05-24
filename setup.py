@@ -32,11 +32,11 @@ try:
 except ImportError:
     print(
         'Please install tensorflow according to the instructions on '
-        'https://www.tensorflow.org/install/ before you continue!')
+        'https://www.tensorflow.org/install before you continue!')
     sys.exit(1)
 
 class PyTest(TestCommand):
-    user_options = [('pytest-args=', 'a', "Arguments to pass to py.test")]
+    user_options = [('pytest-args=', 'a', 'Arguments to pass to py.test')]
     def initialize_options(self):
         TestCommand.initialize_options(self)
         self.pytest_args = ['deeptime/tae']
@@ -60,4 +60,16 @@ setup(
         'scipy',
         'matplotlib'],
     tests_require=['pytest'],
-    zip_safe=False)
+    zip_safe=False,
+    classifiers=[
+        'Development Status :: 3 - Alpha',
+        'Environment :: Console',
+        'Intended Audience :: Science/Research',
+        'License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)',
+        'Natural Language :: English',
+        'Operating System :: OS Independent',
+        'Programming Language :: Python :: 3 :: Only',
+        'Topic :: Scientific/Engineering :: Bio-Informatics',
+        'Topic :: Scientific/Engineering :: Chemistry',
+        'Topic :: Scientific/Engineering :: Mathematics',
+        'Topic :: Scientific/Engineering :: Physics'])
