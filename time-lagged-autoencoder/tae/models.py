@@ -32,7 +32,7 @@ from torch import abs as _abs
 from torch import arange as _arange
 from torch import sqrt as _sqrt
 from torch import zeros as _zeros
-from torch.autograd import Variable as _Variable
+from torch import no_grad as _no_grad
 from torch.autograd import Function as _Function
 from .utils import get_mean as _get_mean
 from .utils import get_covariance as _get_covariance
@@ -65,8 +65,8 @@ class PCA(object):
             return None
         loss = 0.0
         for x, y in loader:
-            x, y = self.transformer(x, y, variable=True)
-            loss += self.loss_function(x.mm(self.score_matrix), y).data[0]
+            x, y = self.transformer(x, y)
+            loss += self.loss_function(x.mm(self.score_matrix), y).item()
         return loss / float(len(loader.dataset))
     def fit(self, train_loader, dim=None, test_loader=None):
         '''Train the model on the provided data loader.
@@ -86,8 +86,7 @@ class PCA(object):
             dim = s.size()[0]
         self.decoder_matrix = u[:, :dim]
         self.encoder_matrix = v.t()[:dim, :]
-        self.score_matrix = _Variable(
-            self.decoder_matrix.mm(self.encoder_matrix))
+        self.score_matrix = self.decoder_matrix.mm(self.encoder_matrix)
         return self.get_loss(train_loader), self.get_loss(test_loader)
     def transform(self, loader):
         '''Apply the model on the provided data loader.
@@ -132,8 +131,8 @@ class TICA(object):
             return None
         loss = 0.0
         for x, y in loader:
-            x, y = self.transformer(x, y, variable=True)
-            loss += self.loss_function(x.mm(self.koopman_matrix), y).data[0]
+            x, y = self.transformer(x, y)
+            loss += self.loss_function(x.mm(self.koopman_matrix), y).item()
         return loss / float(len(loader.dataset))
     def fit(self, train_loader, dim=None, test_loader=None):
         '''Train the model on the provided data loader.
@@ -164,8 +163,7 @@ class TICA(object):
             self.encoder_matrix = _diag(s[:dim]).mm(self.encoder_matrix)
         else:
             self.decoder_matrix = self.decoder_matrix.mm(_diag(s[:dim]))
-        self.koopman_matrix = _Variable(
-            self.decoder_matrix.mm(self.encoder_matrix))
+        self.koopman_matrix = self.decoder_matrix.mm(self.encoder_matrix)
         return self.get_loss(train_loader), self.get_loss(test_loader)
     def transform(self, loader):
         '''Apply the model on the provided data loader.
@@ -240,7 +238,7 @@ class BaseNet(_nn.Module):
         if activation is not None:
             setattr(self, key + '_act_%d%s' % (idx, suffix), activation)
         layer = getattr(self, key + '_prm_%d%s' % (idx, suffix))
-        _nn.init.kaiming_normal(layer.weight.data, a=alpha, mode='fan_in')
+        _nn.init.kaiming_normal_(layer.weight.data, a=alpha, mode='fan_in')
         try:
             layer.bias.data.uniform_(0.0, 0.1)
         except AttributeError:
@@ -267,14 +265,14 @@ class BaseNet(_nn.Module):
         self.train()
         train_loss = 0
         for x, y in loader:
-            x, y = self.transformer(x, y, variable=True, train=True)
+            x, y = self.transformer(x, y)
             if self.use_cuda:
                 x = x.cuda(async=self.async)
                 y = y.cuda(async=self.async)
             self.optimizer.zero_grad()
             loss = self.forward_and_apply_loss_function(x, y)
             loss.backward()
-            train_loss += loss.data[0]
+            train_loss += loss.item()
             self.optimizer.step()
         if self.normalize_batch:
             return train_loss / float(len(loader))
@@ -286,11 +284,11 @@ class BaseNet(_nn.Module):
         if loader is None:
             return None
         for x, y in loader:
-            x, y = self.transformer(x, y, variable=True)
+            x, y = self.transformer(x, y)
             if self.use_cuda:
                 x = x.cuda(async=self.async)
                 y = y.cuda(async=self.async)
-            test_loss += self.forward_and_apply_loss_function(x, y).data[0]
+            test_loss += self.forward_and_apply_loss_function(x, y).item()
         if self.normalize_batch:
             return test_loss / float(len(loader))
         return test_loss / float(len(loader.dataset))
@@ -311,8 +309,9 @@ class BaseNet(_nn.Module):
             train_loss.append(
                 self.train_step(
                     train_loader))
-            test_loss.append(
-                self.test_step(test_loader))
+            with _no_grad():
+                test_loss.append(
+                    self.test_step(test_loader))
         return train_loss, test_loss
     def transform(self, loader):
         '''Apply the model on the provided data loader.
@@ -323,7 +322,7 @@ class BaseNet(_nn.Module):
         self.eval()
         latent = []
         for x, _ in loader:
-            x = self.transformer.x(x, variable=True, volatile=True)
+            x = self.transformer.x(x)
             if self.use_cuda:
                 x = x.cuda(async=self.async)
             y = self.encode(x)
@@ -489,7 +488,7 @@ class VAE(BaseNet):
         '''Reparametrize the given input.'''
         if self.training:
             std = lv.mul(0.5).exp_()
-            eps = _Variable(_randn(*std.size()))
+            eps = _randn(*std.size())
             if self.use_cuda:
                 eps = eps.cuda()
             return eps.mul(std).add_(mu)
@@ -531,8 +530,7 @@ class DecomposeRSPDMatrix(_Function):
         eigval_dist = eigval[:, None] - eigval[None, :]
         idx = _arange(n).long().tolist()
         eigval_dist[idx, idx] = 1.0
-        dval_out = _Variable(
-            eigvec[:, None, :] * eigvec[None, :, :])
+        dval_out = eigvec[:, None, :] * eigvec[None, :, :]
         dvec_out = _zeros(n, n, n, n).type(eigval.type())
         omega = _zeros(n, n).type(eigval.type())
         for i in range(n):
@@ -541,7 +539,6 @@ class DecomposeRSPDMatrix(_Function):
                 omega[idx, idx] = 0.0
                 omega.div_(eigval_dist)
                 dvec_out[i, j, :, :] = -_mm(eigvec, omega)
-        dvec_out = _Variable(dvec_out)
         dval = _sum(dval[None, None, :] * dval_out, -1)
         dvec = _sum(_sum(dvec[None, None, :, :] * dvec_out, -1), -1)
         return dval + dvec
