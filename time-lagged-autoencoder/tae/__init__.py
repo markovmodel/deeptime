@@ -30,7 +30,7 @@ del get_distribution, DistributionNotFound
 __author__ = 'Christoph Wehmeyer'
 __email__ = 'christoph.wehmeyer@fu-berlin.de'
 
-from .api import pca, tica, ae, vae
-from .models import PCA, TICA, AE, VAE
+from .api import pca, tica, ae, vae, vampnet
+from .models import PCA, TICA, AE, VAE, VAMPNet
 from . import utils
 from . import toymodels

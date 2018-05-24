@@ -26,7 +26,6 @@ from torch.utils.data import Dataset as _Dataset
 from torch.utils.data import TensorDataset as _TensorDataset
 from torch.utils.data import ConcatDataset as _ConcatDataset
 from torch.utils.data import DataLoader as _DataLoader
-from torch.autograd import Variable as _Variable
 
 __all__ = [
     'LaggedDataset',
@@ -332,7 +331,7 @@ class BaseTransform(object):
             self.sub = mean
         if covariance is not None:
             self.mul = get_sqrt_inverse(covariance)
-    def __call__(self, x, variable=False, **kwargs):
+    def __call__(self, x):
         try:
             x.sub_(self.sub[None, :])
         except AttributeError:
@@ -341,8 +340,6 @@ class BaseTransform(object):
             x = x.mm(self.mul)
         except AttributeError:
             pass
-        if variable:
-            return _Variable(x, **kwargs)
         return x
 
 class Transform(object):
@@ -362,7 +359,5 @@ class Transform(object):
         self, x_mean=None, x_covariance=None, y_mean=None, y_covariance=None):
         self.x = BaseTransform(mean=x_mean, covariance=x_covariance)
         self.y = BaseTransform(mean=y_mean, covariance=y_covariance)
-    def __call__(self, x, y, variable=False, train=False):
-        xtrns = self.x(x, variable=variable, volatile=not train)
-        ytrns = self.y(y, variable=variable, volatile=not train)
-        return xtrns, ytrns
+    def __call__(self, x, y):
+        return self.x(x), self.y(y)
