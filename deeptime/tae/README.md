@@ -2,16 +2,6 @@
 
 A toolbox for dimension reduction of time series data with a [time-lagged autoencoder](https://arxiv.org/abs/1710.11239)-type deep neural network.
 
-## Installation
-Make sure to install pytorch via conda, instructions on http://pytorch.org, before you install the present module with
-
-```bash
-python setup.py test
-python setup.py install
-```
-
-To run the included benchmarks, you also need to install the packages [pyemma](https://github.com/markovmodel/pyemma) and [mdshare](https://github.com/markovmodel/mdshare).
-
 ## Methods
 This package implements
 - principal component analysis (PCA),
