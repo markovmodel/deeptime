@@ -592,9 +592,9 @@ class VampnetTools(object):
 
         # Filter out eigvalues below threshold and corresponding eigvectors
         eig_th = tf.constant(self.epsilon, dtype=tf.float32)
-        index_eig = tf.where(eigval_all > eig_th)
-        eigval = tf.gather_nd(eigval_all, index_eig)
-        eigvec = tf.gather_nd(tf.transpose(eigvec_all), index_eig)
+        index_eig = tf.to_int32(eigval_all > eig_th)
+        _, eigval = tf.dynamic_partition(eigval_all, index_eig, 2)
+        _, eigvec = tf.dynamic_partition(tf.transpose(eigvec_all), index_eig, 2)
 
         # Build the diagonal matrix with the filtered eigenvalues or square
         # root of the filtered eigenvalues according to the parameter
