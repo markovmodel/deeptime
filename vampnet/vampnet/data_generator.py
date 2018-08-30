@@ -176,20 +176,20 @@ def get_alanine_data(input_type = 'coordinates', return_dihedrals = True, number
 
     if input_type == 'distances':
 
-        local_filename = mdshare.load('alanine-dipeptide-3x250ns-heavy-atom-distances.npz')
+        local_filename = mdshare.fetch('alanine-dipeptide-3x250ns-heavy-atom-distances.npz')
 
         traj_whole = np.load(local_filename)['arr_0']
 
     elif input_type == 'coordinates':
 
-        local_filename = mdshare.load('alanine-dipeptide-3x250ns-heavy-atom-positions.npz')
+        local_filename = mdshare.fetch('alanine-dipeptide-3x250ns-heavy-atom-positions.npz')
 
         traj_whole = np.load(local_filename)['arr_0']
     
     retval.append(traj_whole)
 
     if return_dihedrals:
-        dihedral = np.load(mdshare.load('alanine-dipeptide-3x250ns-backbone-dihedrals.npz'))['arr_0']
+        dihedral = np.load(mdshare.fetch('alanine-dipeptide-3x250ns-backbone-dihedrals.npz'))['arr_0']
         retval.append(dihedral)
     
     
