@@ -19,12 +19,11 @@ If you use VAMPnet in scientific work, please cite:
 
 ## Installation
 
-IMPORTANT: we're currently investigating an issue with Tensorflow 1.7 which
-causes the eigenvalue decomposition to fail. This issue doesn't present itself
-on TF 1.4-1.6, so until this is resolved please use one of these older releases
-instead.
+IMPORTANT: On Tensorflow 1.7 and 1.8 there's an unresolved issue which causes the 
+eigenvalue decomposition to fail. This issue doesn't present itself on TF 1.4-1.6
+and 1.9+, so please use one of these other releases instead.
 
-This package requires [Tensorflow 1.4-1.6](https://www.tensorflow.org) to be used.
+This package requires [Tensorflow](https://www.tensorflow.org) to be used.
 Please install either tensorflow or tensorflow-gpu. Installation instructions:
 
 https://www.tensorflow.org/install/
