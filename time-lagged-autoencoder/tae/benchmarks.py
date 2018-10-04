@@ -94,7 +94,7 @@ def evaluate_sqrt_model(
         lat, trn, val = tae.ae(
             data, dim=1, lag=lag, n_epochs=200, validation_split=0.5,
             batch_size=100, whiten=True, pin_memory=use_cuda, hid_size=[200, 100],
-            cuda=use_cuda, async=use_cuda)
+            cuda=use_cuda, non_blocking=use_cuda)
         cca, its = analyse(lat, ref_data, msm_lags)
         result.update({
             'ae_%d_its' % lag: np.asarray(its),
@@ -163,7 +163,7 @@ def evaluate_swissroll_model(
         lat, trn, val = tae.ae(
             data, dim=dim, lag=lag, n_epochs=200, validation_split=0.5,
             batch_size=100, whiten=True, pin_memory=use_cuda, hid_size=[200, 100],
-            cuda=use_cuda, async=use_cuda)
+            cuda=use_cuda, non_blocking=use_cuda)
         cca, its = analyse(lat, ref_data, msm_lags)
         result.update({
             'ae_%d_its' % lag: np.asarray(its),
@@ -240,7 +240,7 @@ def evaluate_ala2_md(
         lat, trn, val = tae.ae(
             data, dim=2, lag=lag, n_epochs=200, validation_split=0.5,
             batch_size=100, whiten=True, pin_memory=use_cuda, hid_size=[200, 100],
-            cuda=use_cuda, async=use_cuda)
+            cuda=use_cuda, non_blocking=use_cuda)
         cca, its = analyse(lat, ref_data, msm_lags)
         result.update({
             'ae_%d_its' % lag: np.asarray(its),
@@ -293,7 +293,7 @@ def evaluate_villin_md(
         lat, trn, val = tae.ae(
             _data, dim=2, lag=lag, n_epochs=200, validation_split=0.5,
             batch_size=100, whiten=True, pin_memory=use_cuda, hid_size=[200, 100],
-            cuda=use_cuda, async=use_cuda)
+            cuda=use_cuda, non_blocking=use_cuda)
         result.update({
             'ae_%d_its' % lag: np.asarray(analyse(lat, msm_lags)),
             'ae_%d_trn' % lag: np.asarray(trn),
