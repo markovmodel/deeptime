@@ -200,11 +200,11 @@ class BaseNet(_nn.Module):
         bias (boolean): specify usage of bias neurons
         lr (float): learning rate parameter for Adam
         cuda (boolean): use the GPU
-        async (boolean): use asyncronous mode (GPU only)
+        non_blocking (boolean): use asyncronous mode (GPU only)
     '''
     def __init__(
         self, inp_size, lat_size, hid_size, normalize_batch,
-        dropout, alpha, prelu, bias, lr, cuda, async):
+        dropout, alpha, prelu, bias, lr, cuda, non_blocking):
         super(BaseNet, self).__init__()
         sizes = [inp_size] + list(hid_size) + [lat_size]
         self._last = len(sizes) - 2
@@ -213,10 +213,10 @@ class BaseNet(_nn.Module):
         self._setup(sizes, bias, alpha, prelu, dropout)
         self.optimizer = _optim.Adam(self.parameters(), lr=lr)
         self.normalize_batch = normalize_batch
-        self.async = async
+        self.non_blocking = non_blocking
         if cuda:
             self.use_cuda = True
-            self.cuda() # the async=... parameter is not accepted, here
+            self.cuda() # the non_blocking=... parameter is not accepted, here
         else:
             self.use_cuda = False
     def _setup(self, sizes, bias, alpha, prelu, dropout):
@@ -267,8 +267,8 @@ class BaseNet(_nn.Module):
         for x, y in loader:
             x, y = self.transformer(x, y)
             if self.use_cuda:
-                x = x.cuda(async=self.async)
-                y = y.cuda(async=self.async)
+                x = x.cuda(non_blocking=self.non_blocking)
+                y = y.cuda(non_blocking=self.non_blocking)
             self.optimizer.zero_grad()
             loss = self.forward_and_apply_loss_function(x, y)
             loss.backward()
@@ -286,8 +286,8 @@ class BaseNet(_nn.Module):
         for x, y in loader:
             x, y = self.transformer(x, y)
             if self.use_cuda:
-                x = x.cuda(async=self.async)
-                y = y.cuda(async=self.async)
+                x = x.cuda(non_blocking=self.non_blocking)
+                y = y.cuda(non_blocking=self.non_blocking)
             test_loss += self.forward_and_apply_loss_function(x, y).item()
         if self.normalize_batch:
             return test_loss / float(len(loader))
@@ -324,7 +324,7 @@ class BaseNet(_nn.Module):
         for x, _ in loader:
             x = self.transformer.x(x)
             if self.use_cuda:
-                x = x.cuda(async=self.async)
+                x = x.cuda(non_blocking=self.non_blocking)
             y = self.encode(x)
             if self.cuda:
                 y = y.cpu()
@@ -356,10 +356,10 @@ class AE(BaseNet):
     def __init__(
         self, inp_size, lat_size, hid_size=[],
         dropout=0.5, alpha=0.01, prelu=False,
-        bias=True, lr=0.001, cuda=False, async=False):
+        bias=True, lr=0.001, cuda=False, non_blocking=False):
         super(AE, self).__init__(
             inp_size, lat_size, hid_size, False,
-            dropout, alpha, prelu, bias, lr, cuda, async)
+            dropout, alpha, prelu, bias, lr, cuda, non_blocking)
         self._mse_loss_function = _nn.MSELoss(size_average=False)
     def _setup(self, sizes, bias, alpha, prelu, dropout):
         '''Helper function to create al necessary layers.'''
@@ -431,10 +431,10 @@ class VAE(BaseNet):
     def __init__(
         self, inp_size, lat_size, hid_size=[], beta=1.0,
         dropout=0.5, alpha=0.01, prelu=False,
-        bias=True, lr=0.001, cuda=False, async=False):
+        bias=True, lr=0.001, cuda=False, non_blocking=False):
         super(VAE, self).__init__(
             inp_size, lat_size, hid_size, False,
-            dropout, alpha, prelu, bias, lr, cuda, async)
+            dropout, alpha, prelu, bias, lr, cuda, non_blocking)
         self.beta = beta
         self._mse_loss_function = _nn.MSELoss(size_average=False)
     def _setup(self, sizes, bias, alpha, prelu, dropout):
@@ -562,10 +562,10 @@ class VAMPNet(BaseNet):
     def __init__(
         self, inp_size, lat_size, hid_size=[],
         dropout=0.5, alpha=0.01, prelu=False,
-        bias=True, lr=0.001, cuda=False, async=False):
+        bias=True, lr=0.001, cuda=False, non_blocking=False):
         super(VAMPNet, self).__init__(
             inp_size, lat_size, hid_size, True,
-            dropout, alpha, prelu, bias, lr, cuda, async)
+            dropout, alpha, prelu, bias, lr, cuda, non_blocking)
     def _setup(self, sizes, bias, alpha, prelu, dropout):
         for c, idx in enumerate(range(1, len(sizes))):
             setattr(

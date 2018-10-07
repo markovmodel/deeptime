@@ -152,7 +152,7 @@ def ae(
         bias=True,
         lr=0.001,
         cuda=False,
-        async=False)
+        non_blocking=False)
     ae_args.update(kwargs)
     try:
         size = data.shape[1]
@@ -211,7 +211,7 @@ def vae(
         bias=True,
         lr=0.001,
         cuda=False,
-        async=False)
+        non_blocking=False)
     vae_args.update(kwargs)
     try:
         size = data.shape[1]
@@ -272,7 +272,7 @@ def vampnet(
         bias=True,
         lr=0.001,
         cuda=False,
-        async=False)
+        non_blocking=False)
     vn_args.update(kwargs)
     try:
         size = data.shape[1]
