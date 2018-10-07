@@ -475,7 +475,7 @@ class VAE(BaseNet):
         y_recon, mu, lv = self(x)
         mse = self._mse_loss_function(y_recon, y)
         kld = -0.5 * _sum(1.0 + lv - mu.pow(2) - lv.exp())
-        return mse + self.beta * kld / float(y.size(1))
+        return mse + self.beta * kld / float(y.size(0))
     def _encode(self, x):
         '''Encode the given input.'''
         y = x
