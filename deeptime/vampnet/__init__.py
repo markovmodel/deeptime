@@ -18,4 +18,13 @@
 __author__ = 'Andreas Mardt, Luca Pasquali'
 __email__ = 'andreas.mardt@fu-berlin.de, luca.pasquali@fu-berlin.de'
 
+try:
+    import tensorflow
+except ImportError:
+    from sys import exit
+    print(
+        'Please install tensorflow according to the instructions on '
+        'https://www.tensorflow.org/install before you continue!')
+    exit(1)
+
 from .vampnet import VampnetTools

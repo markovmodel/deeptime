@@ -26,5 +26,5 @@ except DistributionNotFound:
     __version__ = 'x.y.z'
 del get_distribution, DistributionNotFound
 
-from . import tae
-from . import vampnet
+# from . import tae
+# from . import vampnet

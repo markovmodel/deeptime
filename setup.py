@@ -24,16 +24,16 @@ try:
 except ImportError:
     print(
         'Please install pytorch>=0.4 according to the instructions on '
-        'http://pytorch.org before you continue!')
-    sys.exit(1)
+        'http://pytorch.org before if you plan to use the time-lagged '
+        'autoencoder!')
 
 try:
     import tensorflow
 except ImportError:
     print(
         'Please install tensorflow according to the instructions on '
-        'https://www.tensorflow.org/install before you continue!')
-    sys.exit(1)
+        'https://www.tensorflow.org/install if you plan to use '
+        'vampnets!')
 
 class PyTest(TestCommand):
     user_options = [('pytest-args=', 'a', 'Arguments to pass to py.test')]

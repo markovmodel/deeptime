@@ -23,6 +23,15 @@ time-lagged autoencoder.
 __author__ = 'Christoph Wehmeyer'
 __email__ = 'christoph.wehmeyer@fu-berlin.de'
 
+try:
+    import torch
+except ImportError:
+    from sys import exit
+    print(
+        'Please install pytorch>=0.4 according to the instructions on '
+        'http://pytorch.org before you continue!')
+    exit(1)
+
 from .api import pca, tica, ae, vae, vampnet
 from .models import PCA, TICA, AE, VAE, VAMPNet
 from . import utils
