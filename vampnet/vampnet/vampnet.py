@@ -321,7 +321,7 @@ class VampnetTools(object):
         return eig_sum_sq
 
 
-    def estimate_koopman_op(self, traj, tau):
+    def estimate_koopman_op(self, trajs, tau):
         '''Estimates the koopman operator for a given trajectory at the lag time
             specified. The formula for the estimation is:
                 K = C00 ^ -1 @ C01
@@ -340,9 +340,15 @@ class VampnetTools(object):
             Koopman operator estimated at timeshift tau
 
         '''
-
-        c_0 = np.transpose(traj[:-tau]) @ traj[:-tau]
-        c_tau = np.transpose(traj[:-tau]) @ traj[tau:]
+        if type(trajs) == list:
+            traj = np.concatenate([t[:-tau] for t in trajs], axis = 0)
+            traj_lag = np.concatenate([t[tau:] for t in trajs], axis = 0)
+        else:
+            traj = trajs[:-tau]
+            traj_lag = trajs[tau:]
+        
+        c_0 = np.transpose(traj) @ traj
+        c_tau = np.transpose(traj) @ traj_lag
 
         eigv, eigvec = np.linalg.eig(c_0)
         include = eigv > self._epsilon
@@ -371,8 +377,11 @@ class VampnetTools(object):
             Implied timescales estimated for the trajectory.
 
         '''
-
-        its = np.zeros((traj.shape[1]-1, len(lags)))
+        if type(traj) == list:
+            outputsize = traj[0].shape[1]
+        else:
+            outputsize = traj.shape[1]
+        its = np.zeros((outputsize-1, len(lags)))
  
         for t, tau_lag in enumerate(lags):
             koopman_op = self.estimate_koopman_op(traj, tau_lag)
@@ -408,7 +417,10 @@ class VampnetTools(object):
 
         '''
 
-        n_states = traj.shape[1]
+        if type(traj) == list:
+            n_states = traj[0].shape[1]
+        else:
+            n_states = traj.shape[1]
 
         predicted = np.zeros((n_states, n_states, steps))
         estimated = np.zeros((n_states, n_states, steps))
@@ -458,11 +470,15 @@ class VampnetTools(object):
             Koopman operator estimated at timeshift tau
 
         '''
+        
+        if type(traj) == list:
+            raise Error('Multiple trajectories not supported')
 
         koop_init = self.estimate_koopman_op(traj, tau)
             
         n_states = traj.shape[1]
-
+        
+        
         rs = lambda k: np.reshape(k, (n_states, n_states))
         
         def errfun(k):
