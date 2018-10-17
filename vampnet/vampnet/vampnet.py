@@ -329,6 +329,7 @@ class VampnetTools(object):
         Parameters
         ----------
         traj: numpy array with size [traj_timesteps, traj_dimensions]
+            or a list of trajectories
             Trajectory described by the returned koopman operator
             
         tau: int
@@ -366,7 +367,7 @@ class VampnetTools(object):
         Parameters
         ----------
         traj: numpy array with size [traj_timesteps, traj_dimensions]
-            trajectory data
+            trajectory data or a list of trajectories
             
         lags: numpy array with size [lag_times]
             series of lag times at which the implied timescales are estimated
@@ -400,7 +401,7 @@ class VampnetTools(object):
         Parameters
         ----------
         traj: numpy array with size [traj_timesteps, traj_dimensions]
-            trajectory data
+            trajectory data or a list of trajetories
             
         steps: int
             how many lag times the ck test will be evaluated at
