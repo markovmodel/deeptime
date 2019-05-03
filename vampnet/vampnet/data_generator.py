@@ -165,14 +165,11 @@ def get_prinz_pot(nstep, x0 = 0., nskip=1, dt=0.01, kT=10.0, mass=1.0, damping=1
     pw = PrinzModel(dt, kT, mass=mass, damping=damping)
     return pw.sample(x0, nstep, nskip=nskip)
 
-def get_alanine_data(input_type = 'coordinates', return_dihedrals = True, number_files = 1):
+def get_alanine_data(input_type = 'coordinates', return_dihedrals = True):
     
     import mdshare
     
     retval = []
-    
-    if number_files != 1:
-        raise NameError('Not supported yet') 
 
     if input_type == 'distances':
 
@@ -241,3 +238,99 @@ def build_generator_on_source(data_source, batch_size, lag, output_size):
             counter_batches = 0
 
         yield data
+
+        
+    
+def build_generator_on_source_shuffle(data_source, batch_size, lag, output_size, preloaded_batches = 1):
+    '''Function used to create a generator that will randomly access data and fetch them from a data
+    source through an iterator. This can be passed as parameter to a keras fit_generator method.
+
+    Parameters
+    ----------
+    data_source: pyemma source object.
+        Data files source. This has to be initialized with chunksize = batch_size
+
+    batch_size: int
+        Batch size to be used for the training
+
+    lag: int
+        time frames lag to be used in the training of the VAMPnets
+
+    output_size: int
+        How many output nodes the network has
+        
+    preloaded_batches: int
+        How many batches of data should be loaded at once; higher values will improve
+        execution speed but also memory consumption
+    '''
+
+    counter_batches = 0
+
+
+    # How many batches before the iterator has to be reinitialized
+    steps_epoch = np.ceil(np.sum((data_source.trajectory_lengths()-lag)/ (batch_size* preloaded_batches)))
+    input_size = data_source.dimension()
+    
+    
+    traj_lengths = data_source.trajectory_lengths()
+    remaining_frames = np.concatenate([[index_traj*np.ones((traj_len - lag)), np.arange(traj_len - lag)] for index_traj, traj_len in enumerate(traj_lengths)], axis = 1).T.astype('int')
+    indexes = np.arange(remaining_frames.shape[0])
+    np.random.shuffle(indexes)
+    
+    while True:       
+        
+        start = counter_batches * batch_size * preloaded_batches
+        end = min(start + batch_size * preloaded_batches, remaining_frames.shape[0])
+        
+        frames = remaining_frames[indexes[start:end]]
+        
+        fake_ind = frames[:,0]*(traj_lengths.sum()) + frames[:,1]
+        arg_sort = np.argsort(fake_ind)
+        sort_arg_sort = np.argsort(arg_sort)
+        
+        frames_tau = frames + np.array([np.zeros((frames.shape[0])), np.ones((frames.shape[0]))*lag], dtype = 'int').T
+        
+        
+        data_iterator_t = data_source.iterator(stride=frames[arg_sort],
+                                               return_trajindex=False)
+        data_iterator_tau = data_source.iterator(stride=frames_tau[arg_sort],
+                                               return_trajindex=False)
+        
+        data = np.empty((2, batch_size * preloaded_batches, input_size))
+        start_iter = 0
+        for iter_data, iter_data_tau in zip(data_iterator_t, data_iterator_tau):
+            temp_frames = iter_data.shape[0]
+            end_iter = start_iter + temp_frames
+            data[0, start_iter:end_iter] = iter_data
+            data[1, start_iter:end_iter] = iter_data_tau
+            start_iter = end_iter
+
+            
+        data = data[:, sort_arg_sort]
+        
+        index_preloaded = 0
+        labels = np.empty((batch_size,2*output_size)).astype('float32')
+        
+        while index_preloaded < preloaded_batches:
+            
+            start_batch = index_preloaded * batch_size
+            end_batch = start_batch + batch_size
+            index_preloaded += 1
+            
+            if end_batch > data.shape[1]:
+                end_batch = data.shape[1]
+                index_preloaded = preloaded_batches
+                labels = np.empty((end_batch - start_batch,2*output_size)).astype('float32')
+                
+            output_data = [data[0, start_batch:end_batch], data[1, start_batch:end_batch]], labels
+            
+            yield output_data
+
+        
+        counter_batches += 1
+
+        if counter_batches == steps_epoch:
+            
+            counter_batches = 0
+            indexes = np.arange(remaining_frames.shape[0])
+            np.random.shuffle(indexes)
